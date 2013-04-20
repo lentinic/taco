@@ -1,0 +1,17 @@
+*.exe
+*.dll
+*.lib
+*.so
+*.o
+
+*.DS_Store
+*.suo
+*.sdf
+*.opensdf
+*.filters
+*.user
+
+Build/*
+Lib/*
+*/Bin/*
+*/Intermediate/*
