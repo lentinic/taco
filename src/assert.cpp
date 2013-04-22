@@ -24,6 +24,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <stdio.h>
 #include <stdarg.h>
 
+#include "ring_buffer.h"
 #include "thread_local.h"
 
 namespace taco
@@ -33,6 +34,12 @@ namespace taco
 	#if defined(_DEBUG) || defined(TACO_ASSERTS_ENABLED)
 	const int TacoAssertDummy = 0;
 	#endif
+
+	ring_buffer<int,128,rb_access_policy::MPMC> a;
+	ring_buffer<int,128,rb_access_policy::SPSC> b;
+	ring_buffer<int,128,rb_access_policy::SPMC> c;
+	ring_buffer<int,128,rb_access_policy::MPSC> d;
+
 
 	assert_response AssertFailed(const char * cnd, const char * file, int line, const char * fmt, ...)
 	{
