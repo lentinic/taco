@@ -20,12 +20,16 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\taco\assert.h" />
+    <ClInclude Include="..\include\taco\fiber.h" />
     <ClInclude Include="..\src\cache_line.h" />
+    <ClInclude Include="..\src\fiber_impl.h" />
     <ClInclude Include="..\src\ring_buffer.h" />
     <ClInclude Include="..\src\thread_local.h" />
+    <ClInclude Include="..\src\windows\fiber_impl.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\assert.cpp" />
+    <ClCompile Include="..\src\fiber.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{D5E0EA4F-CF20-4E51-AA9B-47CB9131383C}</ProjectGuid>
