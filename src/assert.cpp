@@ -35,12 +35,6 @@ namespace taco
 	const int TacoAssertDummy = 0;
 	#endif
 
-	ring_buffer<int,128,rb_access_policy::MPMC> a;
-	ring_buffer<int,128,rb_access_policy::SPSC> b;
-	ring_buffer<int,128,rb_access_policy::SPMC> c;
-	ring_buffer<int,128,rb_access_policy::MPSC> d;
-
-
 	assert_response AssertFailed(const char * cnd, const char * file, int line, const char * fmt, ...)
 	{
 		char buf[1024];
