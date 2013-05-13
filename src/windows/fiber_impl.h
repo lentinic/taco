@@ -42,6 +42,7 @@ namespace taco
 		std::atomic_int				m_refcount;
 		void *						m_handle;
 		fiber_id_t *				m_parent;
+		fiber_status				m_status;
 	};
 
 	static thread_local fiber_id_t * CurrentFiber = nullptr;
@@ -51,7 +52,10 @@ namespace taco
 	{
 		fiber_id_t * self = (fiber_id_t *) arg;
 		TACO_ASSERT(self != nullptr);
+
+		self->m_status = fiber_status::active;
 		self->m_fn();
+		self->m_status = fiber_status::complete;
 	}
 
 	void FiberInitializeThread()
@@ -59,6 +63,7 @@ namespace taco
 		TACO_ASSERT(ThreadFiber == nullptr);
 		ThreadFiber = new fiber_id_t;
 		ThreadFiber->m_refcount = 1;
+		ThreadFiber->m_status = fiber_status::initialized;
 		ConvertThreadToFiber(ThreadFiber);
 		ThreadFiber->m_handle = GetCurrentFiber();
 		CurrentFiber = ThreadFiber;
@@ -79,6 +84,8 @@ namespace taco
 		f->m_fn = fn;
 		f->m_refcount = 1;
 		f->m_handle = ::CreateFiber(FIBER_STACK_SZ, &FiberMain, f);
+		f->m_parent = nullptr;
+		f->m_status = fiber_status::initialized;
 
 		return f;
 	}
@@ -91,6 +98,8 @@ namespace taco
 
 		f->m_parent = CurrentFiber->m_parent;
 		CurrentFiber->m_parent = nullptr;
+		CurrentFiber = f;
+		f->m_status = fiber_status::active;
 		SwitchToFiber(f->m_handle);
 	}
 
@@ -101,6 +110,21 @@ namespace taco
 		
 		fiber_id_t * to = CurrentFiber->m_parent;
 		CurrentFiber->m_parent = nullptr;
+		CurrentFiber = to;
+		to->m_status = fiber_status::active;
+		SwitchToFiber(to->m_handle);
+	}
+
+	void FiberSuspend()
+	{
+		TACO_ASSERT(CurrentFiber != nullptr);
+		TACO_ASSERT(CurrentFiber->m_parent != nullptr);
+
+		fiber_id_t * to = CurrentFiber->m_parent;
+		CurrentFiber->m_parent = nullptr;
+		CurrentFiber->m_status = fiber_status::suspended;
+		CurrentFiber = to;
+		to->m_status = fiber_status::active;
 		SwitchToFiber(to->m_handle);
 	}
 
@@ -111,14 +135,24 @@ namespace taco
 		TACO_ASSERT(f->m_parent == nullptr);
 		
 		f->m_parent = CurrentFiber;
+		CurrentFiber = f;
+		f->m_status = fiber_status::active;
 		SwitchToFiber(f->m_handle);
+	}
+
+	fiber_status FiberStatus(fiber_id_t * f)
+	{
+		return f->m_status;
 	}
 
 	void FiberAcquire(fiber_id_t * f)
 	{
 		TACO_ASSERT(f != nullptr);
 		int prev = f->m_refcount.fetch_add(1);
-		TACO_ASSERT(prev != 0);
+		if (prev == 0)
+		{
+			TACO_ASSERT_FAILED;
+		}
 	}
 
 	void FiberRelease(fiber_id_t * f)

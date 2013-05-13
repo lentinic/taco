@@ -26,17 +26,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <mutex>
 
 #include "cache_line.h"
+#include "async_access_policy.h"
 
 namespace taco
 {
-	enum class rb_access_policy
-	{
-		SPSC,
-		SPMC,
-		MPSC,
-		MPMC
-	};
-
 	namespace internal
 	{
 		template<class TYPE>
@@ -48,7 +41,7 @@ namespace taco
 		};
 	}
 
-	template<class TYPE, size_t LENGTH, rb_access_policy POLICY = rb_access_policy::SPSC>
+	template<class TYPE, size_t LENGTH, async_access_policy POLICY = async_access_policy::spsc>
 	class ring_buffer
 	{
 	public:
@@ -104,7 +97,7 @@ namespace taco
 	};
 
 	template<class TYPE, size_t LENGTH>
-	class ring_buffer<TYPE, LENGTH, rb_access_policy::SPMC>
+	class ring_buffer<TYPE, LENGTH, async_access_policy::spmc>
 	{
 	public:
 		ring_buffer()
@@ -174,7 +167,7 @@ namespace taco
 	};
 
 	template<class TYPE, size_t LENGTH>
-	class ring_buffer<TYPE, LENGTH, rb_access_policy::MPSC>
+	class ring_buffer<TYPE, LENGTH, async_access_policy::mpsc>
 	{
 	public:
 		ring_buffer()
@@ -243,7 +236,7 @@ namespace taco
 	};
 
 	template<class TYPE, size_t LENGTH>
-	class ring_buffer<TYPE, LENGTH, rb_access_policy::MPMC>
+	class ring_buffer<TYPE, LENGTH, async_access_policy::mpmc>
 	{
 	public:
 		ring_buffer()

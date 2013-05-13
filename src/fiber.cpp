@@ -44,11 +44,25 @@ namespace taco
 		m_id = other.m_id;
 	}
 
+	fiber::fiber(fiber && other)
+		:	m_id(other.m_id)
+	{
+		other.m_id = nullptr;
+	}
+
 	fiber & fiber::operator = (const fiber & other)
 	{
 		FiberRelease(m_id);
 		FiberAcquire(other.m_id);
 		m_id = other.m_id;
+		return *this;
+	}
+
+	fiber & fiber::operator = (fiber && other)
+	{
+		FiberRelease(m_id);
+		m_id = other.m_id;
+		other.m_id = nullptr;
 		return *this;
 	}
 
@@ -78,6 +92,11 @@ namespace taco
 		FiberYield();
 	}
 
+	void fiber::suspend()
+	{
+		FiberSuspend();
+	}
+
 	void fiber::run(fiber_id id)
 	{
 		FiberInvoke(id);
@@ -86,5 +105,10 @@ namespace taco
 	fiber_id fiber::current()
 	{
 		return CurrentFiber;
+	}
+
+	fiber_status fiber::status() const
+	{
+		return FiberStatus(m_id);
 	}
 }

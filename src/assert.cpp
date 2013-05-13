@@ -27,6 +27,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "ring_buffer.h"
 #include "thread_local.h"
 
+const int TacoAssertDummy = 0;
+
 namespace taco
 {
 	static thread_local assert_handler CurrentHandler = nullptr;
