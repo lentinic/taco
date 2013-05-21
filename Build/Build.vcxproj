@@ -22,7 +22,6 @@
     <ClInclude Include="..\include\taco\assert.h" />
     <ClInclude Include="..\include\taco\fiber.h" />
     <ClInclude Include="..\src\async_access_policy.h" />
-    <ClInclude Include="..\src\async_queue.h" />
     <ClInclude Include="..\src\cache_line.h" />
     <ClInclude Include="..\src\fiber_impl.h" />
     <ClInclude Include="..\src\fiber_scheduler.h" />

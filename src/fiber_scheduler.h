@@ -26,7 +26,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 namespace taco
 {
-	void Initialize(int nthreads = -1);
-	void EnterScheduler();
-	bool Schedule(const fiber & f, int affinity = -1);
+	typedef struct scheduler_t * scheduler_id;
+
+	scheduler_id CreateScheduler();
+	scheduler_id CurrentScheduler();
+	void ShutdownScheduler();
+
+	void RunScheduler();
+	void StopScheduler(scheduler_id id = nullptr);
+	
+	bool RunFiber(const fiber & f);
+	bool RunFiber(scheduler_id id, const fiber & f);
 }

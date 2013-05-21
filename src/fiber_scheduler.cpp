@@ -25,182 +25,146 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "fiber_scheduler.h"
 #include "ring_buffer.h"
 #include "thread_local.h"
+
 #include <taco/assert.h>
 
 namespace taco
 {
 	typedef ring_buffer<fiber,512,async_access_policy::mpsc> thread_queue_t;
-	typedef ring_buffer<fiber,512,async_access_policy::spmc> shared_queue_t;
+	typedef ring_buffer<fiber,512,async_access_policy::mpmc> shared_queue_t;
 
-	enum class thread_status
+	enum class scheduler_state
 	{
 		initialized,
-		active,
+		running,
 		sleeping,
-		death_pending,
-		dead
+		stopped
 	};
 
-	struct scheduler_info
+	struct scheduler_t
 	{
-		thread_queue_t				m_thread_fibers[2];
-		shared_queue_t				m_shared_fibers[2];
-		std::thread					m_thread;
-		std::condition_variable		m_cvar;
-		std::mutex					m_mutex;
-		std::atomic<thread_status>	m_status;
-		std::atomic<int>			m_qid;
-		int							m_id;
-		int							m_scheduled;
+		thread_queue_t					m_thread_fibers;
+		std::condition_variable			m_cvar;
+		std::mutex						m_mutex;
+		std::atomic<scheduler_state>	m_state;
+		std::atomic_bool				m_stop_requested;
 	};
 
-	static scheduler_info * ThreadTable = nullptr;
-	static int ThreadCount = 0;
-	static thread_local scheduler_info * CurrentScheduler = nullptr;
+	static thread_local scheduler_id LocalScheduler = nullptr;
+	static shared_queue_t SharedQ;
 
-	void SchedulerMain(scheduler_info * self)
+	scheduler_id CreateScheduler()
 	{
-		fiber::initialize_thread();
+		if (LocalScheduler != nullptr)
+			return LocalScheduler;
 
-		CurrentScheduler = self;
-		int loops = 0;
+		scheduler_t * scheduler = new scheduler_t;
+		scheduler->m_state = scheduler_state::initialized;
+		LocalScheduler = scheduler;
 
-		while (self->m_status != thread_status::death_pending)
+		return scheduler;
+	}
+
+	scheduler_id CurrentScheduler()
+	{
+		return LocalScheduler;
+	}
+
+	void ShutdownScheduler()
+	{
+		if (LocalScheduler == nullptr)
+			return;
+
+		scheduler_state state = LocalScheduler->m_state.load(std::memory_order_acquire);
+		TACO_ASSERT(state == scheduler_state::stopped);
+
+		if (state == scheduler_state::stopped)
 		{
-			self->m_status = thread_status::active;
+			delete LocalScheduler;
+			LocalScheduler = nullptr;
+		}
+	}
 
-			bool did_proc = false;
-			fiber current;
+	void RunScheduler()
+	{
+		scheduler_t * self = LocalScheduler;
+		TACO_ASSERT(self != nullptr);
 
-			int qid = self->m_qid.load(std::memory_order_relaxed);
-			int next = qid ^ 1;
+		if (self == nullptr)
+			return;
 
-			while (self->m_thread_fibers[qid].pop_front(&current))
+		self->m_state = scheduler_state::running;
+		self->m_stop_requested = false;
+
+		for(;;)
+		{
+			if (self->m_stop_requested)
+				break;
+
+			int work_done = 0;
+			fiber todo;
+
+			if (self->m_thread_fibers.pop_front(&todo))
 			{
-				did_proc = true;
-				current();
-				if (current.status() == fiber_status::active)
+				work_done++;
+				todo();
+				if (todo.status() == fiber_status::active)
 				{
-					self->m_thread_fibers[next].push_back(current);
+					RunFiber(self, todo);
 				}
 			}
 
-			while (self->m_shared_fibers[qid].pop_front(&current))
+			if (SharedQ.pop_front(&todo))
 			{
-				did_proc = true;
-				current();
-				if (current.status() == fiber_status::active)
+				work_done++;
+				todo();
+				if (todo.status() == fiber_status::active)
 				{
-					self->m_shared_fibers[next].push_back(current);
+					RunFiber(todo);
 				}
 			}
-
-			int base_id = self->m_id;
-			int cur_id = (base_id + 1) == ThreadCount ? 0 : (base_id + 1);
-			while (cur_id != base_id)
+	
+			if (work_done == 0)
 			{
-				qid = ThreadTable[cur_id].m_qid.load(std::memory_order_relaxed);
-				while (ThreadTable[cur_id].m_shared_fibers[qid].pop_front(&current))
-				{
-					did_proc = true;
-					current();
-					if (current.status() == fiber_status::active)
-					{
-						self->m_shared_fibers[next].push_back(current);
-					}
-				}
-				cur_id = (cur_id + 1) == ThreadCount ? 0 : (cur_id + 1);
-			}
-
-			self->m_qid.store(next, std::memory_order_relaxed);
-			self->m_scheduled = 0;
-			loops++;
-
-			if (!did_proc && loops == 2)
-			{
-				self->m_status = thread_status::sleeping;
 				std::unique_lock<std::mutex> lock(self->m_mutex);
 				self->m_cvar.wait(lock);
-				lock.unlock();
-				loops = 0;
 			}
 		}
 
-		self->m_status = thread_status::dead;
+		self->m_state = scheduler_state::stopped;
 	}
 
-	void Initialize(int nthreads)
+	void StopScheduler(scheduler_id id)
 	{
-		nthreads = (nthreads == -1) ? std::thread::hardware_concurrency() : nthreads;
-		nthreads = std::max(1, nthreads);
-		ThreadCount = nthreads;
-
-		ThreadTable = new scheduler_info[nthreads];
-		ThreadTable[0].m_status = thread_status::initialized;
-		ThreadTable[0].m_id = 0;
-		ThreadTable[0].m_qid = 0;
-		ThreadTable[0].m_scheduled = 0;
-
-		CurrentScheduler = ThreadTable;
-
-		for (int i=1; i<nthreads; i++)
-		{
-			ThreadTable[i].m_status = thread_status::initialized;
-			ThreadTable[i].m_id= i;
-			ThreadTable[i].m_qid = 0;
-			ThreadTable[i].m_scheduled = 0;
-		}
-
-		for (int i=1; i<nthreads; i++)
-		{
-			ThreadTable[i].m_thread = std::thread(&SchedulerMain, ThreadTable + i);
-		}
-	}
+		scheduler_t * self = (id == nullptr) ? LocalScheduler : id;
+		TACO_ASSERT(self != nullptr);
+		if (self == nullptr)
+			return;
 	
-	void EnterScheduler()
-	{
-		TACO_ASSERT(CurrentScheduler != nullptr);
-		TACO_ASSERT(CurrentScheduler->m_status == thread_status::initialized);
-
-		SchedulerMain(CurrentScheduler);
+		self->m_stop_requested = true;
+		self->m_cvar.notify_one();
+		return;
 	}
 
-	bool Schedule(const fiber & f, int affinity)
+	bool RunFiber(const fiber & f)
 	{
-		TACO_ASSERT(CurrentScheduler != nullptr);
+		TACO_ASSERT(LocalScheduler != nullptr);
+		if (LocalScheduler == nullptr)
+			return false;
 
-		int nid = CurrentScheduler->m_qid.load(std::memory_order_relaxed) ^ 1;
-		if (affinity == -1 && CurrentScheduler->m_shared_fibers[nid].push_back(f))
-		{
-			int count = CurrentScheduler->m_scheduled++;
-			if (CurrentScheduler->m_status != thread_status::active || count >= 1)
-			{
-				int base_id = CurrentScheduler->m_id;
-				int cur_id = (base_id + 1) == ThreadCount ? 0 : (base_id + 1);
-				while (cur_id != base_id && count > 0)
-				{
-					if (ThreadTable[cur_id].m_status == thread_status::sleeping)
-						ThreadTable[cur_id].m_cvar.notify_one();
-					count--;
-					cur_id = (cur_id + 1) == ThreadCount ? 0 : (cur_id + 1);
-				}
-			}
+		SharedQ.push_back(f);
+		LocalScheduler->m_cvar.notify_one();
+		return true;
+	}
 
-			return true;
-		}
+	bool RunFiber(scheduler_id id, const fiber & f)
+	{
+		TACO_ASSERT(id != nullptr);
+		if (id == nullptr)
+			return false;
 
-		TACO_ASSERT(affinity >= 0 && affinity < ThreadCount);
-
-		nid = ThreadTable[affinity].m_qid.load(std::memory_order_relaxed) ^ 1;
-		if (ThreadTable[affinity].m_thread_fibers[nid].push_back(f))
-		{
-			if (ThreadTable[affinity].m_status == thread_status::sleeping)
-			{
-				ThreadTable[affinity].m_cvar.notify_one();
-			}
-			return true;
-		}
-
-		return false;
+		id->m_thread_fibers.push_back(f);
+		id->m_cvar.notify_one();
+		return true;
 	}
 }
