@@ -33,8 +33,8 @@ namespace taco
 	void ShutdownScheduler();
 
 	void RunScheduler();
+	bool RunSchedulerOnce();
 	void StopScheduler(scheduler_id id = nullptr);
 	
 	bool RunFiber(const fiber & f);
-	bool RunFiber(scheduler_id id, const fiber & f);
 }

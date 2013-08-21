@@ -19,6 +19,7 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
+#include <list>
 #include <thread>
 #include <condition_variable>
 
@@ -30,7 +31,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 namespace taco
 {
-	typedef ring_buffer<fiber,512,async_access_policy::mpsc> thread_queue_t;
 	typedef ring_buffer<fiber,512,async_access_policy::mpmc> shared_queue_t;
 
 	enum class scheduler_state
@@ -43,23 +43,27 @@ namespace taco
 
 	struct scheduler_t
 	{
-		thread_queue_t					m_thread_fibers;
-		std::condition_variable			m_cvar;
-		std::mutex						m_mutex;
 		std::atomic<scheduler_state>	m_state;
 		std::atomic_bool				m_stop_requested;
 	};
 
-	static thread_local scheduler_id LocalScheduler = nullptr;
-	static shared_queue_t SharedQ;
+	static thread_local scheduler_id		LocalScheduler = nullptr;
+	static shared_queue_t					SharedQ;
+
+	static std::mutex						SleepMutex;
+	static std::condition_variable			SleepCondition;
+	static std::list<scheduler_id>			SleepList;
 
 	scheduler_id CreateScheduler()
 	{
 		if (LocalScheduler != nullptr)
 			return LocalScheduler;
 
+		fiber::initialize_thread();
+
 		scheduler_t * scheduler = new scheduler_t;
 		scheduler->m_state = scheduler_state::initialized;
+		scheduler->m_stop_requested = false;
 		LocalScheduler = scheduler;
 
 		return scheduler;
@@ -75,11 +79,11 @@ namespace taco
 		if (LocalScheduler == nullptr)
 			return;
 
-		scheduler_state state = LocalScheduler->m_state.load(std::memory_order_acquire);
+		scheduler_state state = LocalScheduler->m_state;
 		TACO_ASSERT(state == scheduler_state::stopped);
-
 		if (state == scheduler_state::stopped)
 		{
+			fiber::shutdown_thread();
 			delete LocalScheduler;
 			LocalScheduler = nullptr;
 		}
@@ -87,51 +91,51 @@ namespace taco
 
 	void RunScheduler()
 	{
-		scheduler_t * self = LocalScheduler;
+		scheduler_id self = LocalScheduler;
 		TACO_ASSERT(self != nullptr);
-
 		if (self == nullptr)
 			return;
 
 		self->m_state = scheduler_state::running;
-		self->m_stop_requested = false;
-
-		for(;;)
+		
+		while (!self->m_stop_requested)
 		{
-			if (self->m_stop_requested)
-				break;
-
-			int work_done = 0;
 			fiber todo;
+			size_t work = RunSchedulerOnce();
+			if (work == 0)
+			{
+				std::unique_lock<std::mutex> lock(SleepMutex);
 
-			if (self->m_thread_fibers.pop_front(&todo))
-			{
-				work_done++;
-				todo();
-				if (todo.status() == fiber_status::active)
-				{
-					RunFiber(self, todo);
-				}
-			}
-
-			if (SharedQ.pop_front(&todo))
-			{
-				work_done++;
-				todo();
-				if (todo.status() == fiber_status::active)
-				{
-					RunFiber(todo);
-				}
-			}
-	
-			if (work_done == 0)
-			{
-				std::unique_lock<std::mutex> lock(self->m_mutex);
-				self->m_cvar.wait(lock);
+				self->m_state = scheduler_state::sleeping;
+				SleepList.push_back(self);
+				SleepCondition.wait(lock);
+				self->m_state = scheduler_state::running;
 			}
 		}
 
 		self->m_state = scheduler_state::stopped;
+	}
+
+	bool RunSchedulerOnce()
+	{
+		scheduler_id self = LocalScheduler;
+		TACO_ASSERT(self != nullptr);
+		if (self == nullptr)
+			return 0;
+
+		size_t work_done = 0;
+		fiber todo;
+		if (SharedQ.pop_front(&todo))
+		{
+			work_done++;
+			todo();
+			if (todo.status() == fiber_status::active)
+			{
+				RunFiber(todo);
+			}
+		}
+
+		return work_done != 0;
 	}
 
 	void StopScheduler(scheduler_id id)
@@ -142,29 +146,16 @@ namespace taco
 			return;
 	
 		self->m_stop_requested = true;
-		self->m_cvar.notify_one();
+		SleepCondition.notify_all();
 		return;
 	}
 
 	bool RunFiber(const fiber & f)
 	{
-		TACO_ASSERT(LocalScheduler != nullptr);
-		if (LocalScheduler == nullptr)
+		if (!SharedQ.push_back(f))
 			return false;
-
-		SharedQ.push_back(f);
-		LocalScheduler->m_cvar.notify_one();
-		return true;
-	}
-
-	bool RunFiber(scheduler_id id, const fiber & f)
-	{
-		TACO_ASSERT(id != nullptr);
-		if (id == nullptr)
-			return false;
-
-		id->m_thread_fibers.push_back(f);
-		id->m_cvar.notify_one();
+		
+		SleepCondition.notify_one();
 		return true;
 	}
 }
