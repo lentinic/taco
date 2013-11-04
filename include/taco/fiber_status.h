@@ -22,23 +22,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-#include "basis/fiber_status.h"
+#include <functional>
 
 namespace taco
 {
-	struct fiber_id_t;
-
-	void FiberInitializeThread();
-	void FiberShutdownThread();
-
-	fiber_id_t * FiberCreate(const fiber_fn & fn);
-
-	void FiberYieldTo(fiber_id_t * f);
-	void FiberYield();
-	void FiberInvoke(fiber_id_t * f);
-
-	fiber_status FiberStatus(fiber_id_t * f);
-
-	void FiberAcquire(fiber_id_t * f);
-	void FiberRelease(fiber_id_t * f);
+	enum class fiber_status
+	{
+		initialized,
+		active,
+		suspended,
+		complete
+	};
 }

@@ -26,9 +26,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <functional>
 #include <atomic>
 
-#include <taco/assert.h>
+#include <basis/assert.h>
+#include <basis/thread_local.h>
 
-#include "../thread_local.h"
+#include "../fiber_impl.h"
 
 #if !defined(FIBER_STACK_SZ)
 #define FIBER_STACK_SZ 16384
@@ -38,7 +39,7 @@ namespace taco
 {
 	struct fiber_id_t
 	{
-		std::function<void()>		m_fn;
+		fiber_fn					m_fn;
 		std::atomic_int				m_refcount;
 		void *						m_handle;
 		fiber_id_t *				m_parent;
@@ -46,26 +47,46 @@ namespace taco
 	};
 
 	static thread_local fiber_id_t * CurrentFiber = nullptr;
+	static thread_local fiber_id_t * PreviousFiber = nullptr;
 	static thread_local fiber_id_t * ThreadFiber = nullptr;
+
+	static void FiberSwitch(fiber_id_t * to)
+	{
+		BASIS_ASSERT(to->status == fiber_status::suspended);
+		BASIS_ASSERT(to->m_handle != nullptr);
+
+		PreviousFiber = CurrentFiber;
+		CurrentFiber = to;
+
+		SwitchToFiber(to->m_handle);
+
+		PreviousFiber->m_status = fiber_status::suspended;
+		CurrentFiber->m_status = fiber_status::active;
+	}
 
 	void __stdcall FiberMain(void * arg)
 	{
 		fiber_id_t * self = (fiber_id_t *) arg;
-		TACO_ASSERT(self != nullptr);
+		BASIS_ASSERT(self != nullptr);
 
+		PreviousFiber->m_status = fiber_status::suspended;
 		self->m_status = fiber_status::active;
 		self->m_fn();
 		self->m_status = fiber_status::complete;
+		FiberYield();
 	}
 
 	void FiberInitializeThread()
 	{
-		TACO_ASSERT(ThreadFiber == nullptr);
+		BASIS_ASSERT(ThreadFiber == nullptr);
+
 		ThreadFiber = new fiber_id_t;
-		ThreadFiber->m_refcount = 1;
-		ThreadFiber->m_status = fiber_status::initialized;
 		ConvertThreadToFiber(ThreadFiber);
+		ThreadFiber->m_refcount = 1;
 		ThreadFiber->m_handle = GetCurrentFiber();
+		ThreadFiber->m_parent = nullptr;
+		ThreadFiber->m_status = fiber_status::active;
+
 		CurrentFiber = ThreadFiber;
 	}
 
@@ -78,7 +99,7 @@ namespace taco
 		CurrentFiber = nullptr;
 	}
 
-	fiber_id_t * FiberCreate(const std::function<void()> & fn)
+	fiber_id_t * FiberCreate(const fiber_fn & fn)
 	{
 		fiber_id_t * f = new fiber_id_t;
 		f->m_fn = fn;
@@ -93,14 +114,11 @@ namespace taco
 	void FiberYieldTo(fiber_id_t * f)
 	{
 		TACO_ASSERT(f != nullptr);
-		TACO_ASSERT(f->m_handle != nullptr);
-		TACO_ASSERT(f->m_parent == nullptr);
 
 		f->m_parent = CurrentFiber->m_parent;
 		CurrentFiber->m_parent = nullptr;
-		CurrentFiber = f;
-		f->m_status = fiber_status::active;
-		SwitchToFiber(f->m_handle);
+
+		FiberSwitch(f);
 	}
 
 	void FiberYield()
@@ -110,34 +128,17 @@ namespace taco
 		
 		fiber_id_t * to = CurrentFiber->m_parent;
 		CurrentFiber->m_parent = nullptr;
-		CurrentFiber = to;
-		to->m_status = fiber_status::active;
-		SwitchToFiber(to->m_handle);
-	}
 
-	void FiberSuspend()
-	{
-		TACO_ASSERT(CurrentFiber != nullptr);
-		TACO_ASSERT(CurrentFiber->m_parent != nullptr);
-
-		fiber_id_t * to = CurrentFiber->m_parent;
-		CurrentFiber->m_parent = nullptr;
-		CurrentFiber->m_status = fiber_status::suspended;
-		CurrentFiber = to;
-		to->m_status = fiber_status::active;
-		SwitchToFiber(to->m_handle);
+		FiberSwitch(to);
 	}
 
 	void FiberInvoke(fiber_id_t * f)
 	{
 		TACO_ASSERT(f != nullptr);
-		TACO_ASSERT(f->m_handle != nullptr);
-		TACO_ASSERT(f->m_parent == nullptr);
 		
 		f->m_parent = CurrentFiber;
-		CurrentFiber = f;
-		f->m_status = fiber_status::active;
-		SwitchToFiber(f->m_handle);
+		
+		FiberSwitch(f);
 	}
 
 	fiber_status FiberStatus(fiber_id_t * f)
