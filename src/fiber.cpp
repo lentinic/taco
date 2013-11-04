@@ -33,9 +33,15 @@ namespace taco
 	{
 	}
 
-	fiber::fiber(const std::function<void()> & fn)
+	fiber::fiber(const fiber_fn & fn)
 		: m_id(FiberCreate(fn))
 	{
+	}
+
+	fiber::fiber(fiber_id fid)
+	{
+		FiberAcquire(fid);
+		m_id = fid;
 	}
 
 	fiber::fiber(const fiber & other)
@@ -92,19 +98,14 @@ namespace taco
 		FiberYield();
 	}
 
-	void fiber::suspend()
-	{
-		FiberSuspend();
-	}
-
 	void fiber::run(fiber_id id)
 	{
 		FiberInvoke(id);
 	}
 
-	fiber_id fiber::current()
+	fiber fiber::current()
 	{
-		return CurrentFiber;
+		return fiber(CurrentFiber);
 	}
 
 	fiber_status fiber::status() const

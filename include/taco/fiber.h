@@ -23,24 +23,20 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #pragma once
 
 #include <functional>
+#include "fiber_status.h"
 
 namespace taco
 {
 	typedef struct fiber_id_t * fiber_id;
+	typedef std::function<void()> fiber_fn;
 
-	enum class fiber_status
-	{
-		initialized,
-		active,
-		suspended,
-		complete
-	};
-	
 	class fiber
 	{
 	public:
 		fiber();
-		explicit fiber(const std::function<void()> & fn);
+		explicit fiber(const fiber_fn & fn);
+		explicit fiber(fiber_id fid);
+
 		fiber(const fiber & other);
 		fiber(fiber && other);
 		fiber & operator = (const fiber & other);
@@ -51,9 +47,8 @@ namespace taco
 		static void shutdown_thread();
 		static void	yield_to(const fiber & other);
 		static void yield();
-		static void suspend();
 		static void	run(fiber_id id);
-		static fiber_id	current();
+		static fiber current();
 
 		fiber_status status() const;
 
