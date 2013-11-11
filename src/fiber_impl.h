@@ -26,19 +26,20 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 namespace taco
 {
-	struct fiber_id_t;
+	struct fiber_data;
 
 	void FiberInitializeThread();
 	void FiberShutdownThread();
 
-	fiber_id_t * FiberCreate(const fiber_fn & fn);
+	fiber_data * FiberCreate(const fiber_fn & fn);
 
-	void FiberYieldTo(fiber_id_t * f);
+	void FiberYieldTo(fiber_data * f);
 	void FiberYield();
-	void FiberInvoke(fiber_id_t * f);
+	void FiberSuspend();
+	void FiberInvoke(fiber_data * f);
 
-	fiber_status FiberStatus(fiber_id_t * f);
+	fiber_status FiberStatus(fiber_data * f);
 
-	void FiberAcquire(fiber_id_t * f);
-	void FiberRelease(fiber_id_t * f);
+	void FiberAcquire(fiber_data * f);
+	void FiberRelease(fiber_data * f);
 }

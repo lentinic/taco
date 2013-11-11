@@ -22,140 +22,203 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <list>
 #include <thread>
 #include <condition_variable>
+#include <basis/thread_local.h>
+#include <basis/assert.h>
 
-#include "fiber_scheduler.h"
+#include "taco/scheduler.h"
 #include "ring_buffer.h"
-#include "thread_local.h"
-
-#include <taco/assert.h>
 
 namespace taco
 {
-	typedef ring_buffer<fiber,512,async_access_policy::mpmc> shared_queue_t;
+	typedef ring_buffer<fiber,512,async_access_policy::spmc> shared_queue_t;
+	typedef ring_buffer<fiber,512,async_access_policy::mpsc> private_queue_t;
 
 	enum class scheduler_state
 	{
 		initialized,
 		running,
 		sleeping,
+		stopping,
 		stopped
 	};
 
-	struct scheduler_t
+	struct scheduler
 	{
-		std::atomic<scheduler_state>	m_state;
-		std::atomic_bool				m_stop_requested;
+		shared_queue_t					sharedFibers;
+		private_queue_t					privateFibers;
+
+		std::mutex 						schedLock;
+		std::condition_variable 		hasWork;
+
+		std::atomic<scheduler_state>	state;
+		scheduler *						next;
+		scheduler *						prev;
 	};
 
-	static thread_local scheduler_id		LocalScheduler = nullptr;
-	static shared_queue_t					SharedQ;
+	static thread_local scheduler *									LocalScheduler = nullptr;
+	static scheduler *												SchedulerList = nullptr;
+	static spinlock													ListLock;
 
-	static std::mutex						SleepMutex;
-	static std::condition_variable			SleepCondition;
-	static std::list<scheduler_id>			SleepList;
-
-	scheduler_id CreateScheduler()
+	void InitializeScheduler()
 	{
+		BASIS_ASSERT(LocalScheduler == nullptr);
 		if (LocalScheduler != nullptr)
-			return LocalScheduler;
+			return;
 
 		fiber::initialize_thread();
 
-		scheduler_t * scheduler = new scheduler_t;
-		scheduler->m_state = scheduler_state::initialized;
-		scheduler->m_stop_requested = false;
-		LocalScheduler = scheduler;
+		scheduler * s = new scheduler;
+		s->state = scheduler_state::initialized;
+		s->isStopRequested = false;
+		LocalScheduler = s;
 
-		return scheduler;
-	}
+		ListLock.lock();
+		scheduler * list = SchedulerList;
+		if (list == nullptr)
+		{
+			s->next = s->prev = s;
+		}
+		else
+		{
+			s->prev = list->prev;
+			list->prev->next = s;
 
-	scheduler_id CurrentScheduler()
-	{
-		return LocalScheduler;
+			s->next = list;
+			list->prev = s;
+		}
+		SchedulerList = s;
+		ListLock.unlock();
 	}
 
 	void ShutdownScheduler()
 	{
-		if (LocalScheduler == nullptr)
+		scheduler * self = LocalScheduler;
+		BASIS_ASSERT(self != nullptr);
+		if (self == nullptr)
 			return;
 
-		scheduler_state state = LocalScheduler->m_state;
-		TACO_ASSERT(state == scheduler_state::stopped);
+		scheduler_state state = self->state;
+		BASIS_ASSERT(state == scheduler_state::stopped);
 		if (state == scheduler_state::stopped)
 		{
+			ListLock.lock();
+			self->prev->next = self->next;
+			self->next->prev = self->prev;
+			if (self == SchedulerList)
+			{
+				SchedulerList = (self->prev == self) ? nullptr : self->prev;
+			}
+			ListLock.unlock();
+
 			fiber::shutdown_thread();
-			delete LocalScheduler;
+			delete self;
 			LocalScheduler = nullptr;
 		}
 	}
 
-	void RunScheduler()
+	static void WakeOtherSchedulers(scheduler * self, size_t count)
 	{
-		scheduler_id self = LocalScheduler;
-		TACO_ASSERT(self != nullptr);
+		ListLock.lock();
+		scheduler * other = self->next;
+		while (count > 1 && other != self)
+		{
+			if (other->state == scheduler_state::sleeping)
+			{
+				other->hasWork.notify_one();
+				count--;
+			}
+
+			other = other->next;
+		}
+		ListLock.unlock();
+	}
+
+	static bool PerformWork(scheduler * self, bool steal = true)
+	{
+		fiber todo;
+		if (!self->sharedFibers.pop_front(&todo))
+		{
+			if (!steal)
+				return false;
+
+			ListLock.lock();
+			scheduler * other = self->next;
+			while (other != self && !other->sharedFibers.pop_front(&todo))
+			{
+				other = other->next;
+			}	
+			ListLock.unlock();
+
+			if (!todo)
+				return false;
+		}
+
+
+		todo();
+		if (todo.status() == fiber_status::inactive)
+		{
+			ScheduleFiber(todo);
+		}
+		return true;
+	}
+
+	void EnterScheduler()
+	{
+		scheduler * self = LocalScheduler;
+		BASIS_ASSERT(self != nullptr);
 		if (self == nullptr)
 			return;
 
-		self->m_state = scheduler_state::running;
-		
-		while (!self->m_stop_requested)
-		{
-			fiber todo;
-			size_t work = RunSchedulerOnce();
-			if (work == 0)
-			{
-				std::unique_lock<std::mutex> lock(SleepMutex);
+		self->state = scheduler_state::running;
+		std::unique_lock<std::mutex> lock(self->schedLock);
 
-				self->m_state = scheduler_state::sleeping;
-				SleepList.push_back(self);
-				SleepCondition.wait(lock);
-				self->m_state = scheduler_state::running;
+		while (self->state != scheduler_state::stopping)
+		{
+			if (!PerformWork())
+			{
+				self->state = scheduler_state::sleeping;
+				self->hasWork.wait(lock);
+				self->state = scheduler_state::running;
 			}
 		}
 
-		self->m_state = scheduler_state::stopped;
+		self->state = scheduler_state::stopped;
 	}
 
-	bool RunSchedulerOnce()
+	void ExitScheduler()
 	{
-		scheduler_id self = LocalScheduler;
-		TACO_ASSERT(self != nullptr);
-		if (self == nullptr)
-			return 0;
-
-		size_t work_done = 0;
-		fiber todo;
-		if (SharedQ.pop_front(&todo))
-		{
-			work_done++;
-			todo();
-			if (todo.status() == fiber_status::active)
-			{
-				RunFiber(todo);
-			}
-		}
-
-		return work_done != 0;
-	}
-
-	void StopScheduler(scheduler_id id)
-	{
-		scheduler_t * self = (id == nullptr) ? LocalScheduler : id;
-		TACO_ASSERT(self != nullptr);
+		scheduler * self = LocalScheduler;
+		BASIS_ASSERT(self != nullptr);
 		if (self == nullptr)
 			return;
 	
-		self->m_stop_requested = true;
-		SleepCondition.notify_all();
-		return;
+		self->state = scheduler_state::stopping;
 	}
 
-	bool RunFiber(const fiber & f)
+	void ScheduleFiber(const fiber & f)
 	{
-		if (!SharedQ.push_back(f))
+		scheduler * self = LocalScheduler;
+		BASIS_ASSERT(self != nullptr);
+		if (self == nullptr)
+			return false;
+
+		unsigned int count = 0;
+		while (!self->sharedFibers.push_back(f) && PerformWork(self, false))
+		{
+			count++;
+			if (count == 512)
+				break;
+		}
+
+		if (count == 512)
 			return false;
 		
-		SleepCondition.notify_one();
+		size_t nfibers = self->sharedFibers.count();
+		if (nfibers == 1)
+			return true;
+
+		WakeOtherSchedulers(self, nfibers - 1);
+
 		return true;
 	}
 }

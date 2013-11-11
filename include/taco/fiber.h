@@ -27,7 +27,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 namespace taco
 {
-	typedef struct fiber_id_t * fiber_id;
+	typedef struct fiber_data * fiber_id;
 	typedef std::function<void()> fiber_fn;
 
 	class fiber
@@ -47,6 +47,7 @@ namespace taco
 		static void shutdown_thread();
 		static void	yield_to(const fiber & other);
 		static void yield();
+		static void suspend();
 		static void	run(fiber_id id);
 		static fiber current();
 
