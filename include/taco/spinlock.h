@@ -19,22 +19,39 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-
 #pragma once
+#include <atomic>
 
-#include <taco/fiber.h>
+//
+// From the ticket lock implementation at http://locklessinc.com/articles/locks/
+//
 
 namespace taco
 {
-	typedef struct scheduler_t * scheduler_id;
+	class spinlock
+	{
+	public:
+		spinlock()
+			:	m_users(0), m_tickets(0)
+		{}
 
-	scheduler_id CreateScheduler();
-	scheduler_id CurrentScheduler();
-	void ShutdownScheduler();
+		void lock()
+		{
+			uint16_t me = m_users.fetch_add(1, std::memory_order_release);
+			while (m_tickets.load(std::memory_order_acquire) != me)
+			{}
+		}
 
-	void RunScheduler();
-	bool RunSchedulerOnce();
-	void StopScheduler(scheduler_id id = nullptr);
-	
-	bool RunFiber(const fiber & f);
+		void unlock()
+		{
+			m_tickets.fetch_add(1, std::memory_order_release);
+		}
+
+	private:
+		spinlock(const spinlock &);
+		spinlock & operator = (const spinlock &);
+
+		std::atomic<uint16_t> m_users;
+		std::atomic<uint16_t> m_tickets;
+	};
 }
