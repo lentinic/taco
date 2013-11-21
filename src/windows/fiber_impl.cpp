@@ -20,8 +20,6 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#pragma once
-
 #include <Windows.h>
 #include <functional>
 #include <atomic>
@@ -29,6 +27,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <basis/assert.h>
 #include <basis/thread_local.h>
 
+#include <taco/fiber.h>
 #include "../fiber_impl.h"
 
 #if !defined(FIBER_STACK_SZ)
@@ -172,14 +171,16 @@ namespace taco
 		return f->status;
 	}
 
+	fiber_data * FiberCurrent()
+	{
+		return CurrentFiber;
+	}
+
 	void FiberAcquire(fiber_data * f)
 	{
 		BASIS_ASSERT(f != nullptr);
 		int prev = f->refCount.fetch_add(1);
-		if (prev == 0)
-		{
-			BASIS_ASSERT_FAILED;
-		}
+		BASIS_ASSERT(prev > 0);
 	}
 
 	void FiberRelease(fiber_data * f)
