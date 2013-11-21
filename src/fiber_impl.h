@@ -22,7 +22,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-#include "basis/fiber_status.h"
+#include "taco/fiber_status.h"
 
 namespace taco
 {
@@ -39,6 +39,7 @@ namespace taco
 	void FiberInvoke(fiber_data * f);
 
 	fiber_status FiberStatus(fiber_data * f);
+	fiber_data * FiberCurrent();
 
 	void FiberAcquire(fiber_data * f);
 	void FiberRelease(fiber_data * f);
