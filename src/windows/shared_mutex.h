@@ -28,7 +28,9 @@ namespace taco
 	{
 	public:
 		shared_mutex()
-		{}
+		{
+			InitializeSRWLock(&m_rwlock);
+		}
 
 		bool try_lock_shared()
 		{
@@ -64,6 +66,6 @@ namespace taco
 		shared_mutex(const shared_mutex &);
 		shared_mutex & operator = (const shared_mutex &);
 
-		SRWLOCK m_rwlock = SRWLOCK_INIT;
+		SRWLOCK m_rwlock;
 	};
 }
