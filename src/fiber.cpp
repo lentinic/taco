@@ -21,7 +21,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
 #include <taco/fiber.h>
-#include <taco/assert.h>
 #include <atomic>
 
 #include "fiber_impl.h"
@@ -110,7 +109,7 @@ namespace taco
 
 	fiber fiber::current()
 	{
-		return fiber(CurrentFiber);
+		return fiber(FiberCurrent());
 	}
 
 	fiber_status fiber::status() const
