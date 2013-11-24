@@ -11,6 +11,5 @@
 *.filters
 *.user
 
-Build/Debug/*
-Build/Release/*
-Lib/*
+t2-output/*
+*.tundra2.*
