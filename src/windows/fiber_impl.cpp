@@ -74,7 +74,7 @@ namespace taco
 		// We shouldn't re-enter the fiber after completion
 		// If we do then assert and spin-yield
 		BASIS_ASSERT_FAILED;
-		while (true)
+		for (;;)
 		{
 			FiberYield();
 		}
