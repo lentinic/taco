@@ -79,7 +79,7 @@ namespace taco
 			*dest = s->m_data;
 			s->m_used.store(false, std::memory_order_release);
 			m_head = ((head + 1) == LENGTH) ? 0 : (head + 1);
-			m_count.fetch_add(-1, std::memory_order_relaxed);
+			m_count.fetch_sub(1, std::memory_order_relaxed);
 			return true;
 		}
 
@@ -157,7 +157,7 @@ namespace taco
 					break;
 				}
 			}
-			m_count.fetch_add(-1, std::memory_order_relaxed);
+			m_count.fetch_sub(1, std::memory_order_relaxed);
 			return true;
 		}
 
@@ -236,7 +236,7 @@ namespace taco
 			*dest = s->m_data;
 			s->m_used.store(false, std::memory_order_release);
 			m_head = ((head + 1) == LENGTH) ? 0 : (head + 1);
-			m_count.fetch_add(-1, std::memory_order_relaxed);
+			m_count.fetch_sub(1, std::memory_order_relaxed);
 			return true;
 		}
 
@@ -329,7 +329,7 @@ namespace taco
 				}
 			}
 
-			m_count.fetch_add(-1, std::memory_order_relaxed);
+			m_count.fetch_sub(1, std::memory_order_relaxed);
 			return true;
 		}
 
