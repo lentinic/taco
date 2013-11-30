@@ -34,7 +34,7 @@ namespace taco
 
 		bool try_lock_shared()
 		{
-			return TryAcquireSRWLockShared(&m_rwlock);
+			return TryAcquireSRWLockShared(&m_rwlock) == TRUE;
 		}
 
 		void lock_shared()
@@ -49,10 +49,10 @@ namespace taco
 
 		bool try_lock()
 		{
-			return TryAcquireSRWLockExclusive(&m_rwlock);
+			return TryAcquireSRWLockExclusive(&m_rwlock) == TRUE;
 		}
 
-		void lock(const unsigned spincount = 50)
+		void lock()
 		{
 			AcquireSRWLockExclusive(&m_rwlock);
 		}
