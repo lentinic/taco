@@ -49,6 +49,7 @@ namespace taco
 		{
 			m_head = 0;
 			m_tail = 0;
+			m_count = 0;
 
 			for (size_t i=0; i<LENGTH; i++)
 				m_items[i].m_used.store(false);
@@ -64,6 +65,7 @@ namespace taco
 			s->m_data = data;
 			s->m_used.store(true, std::memory_order_release);
 			m_tail = ((tail + 1) == LENGTH) ? 0 : (tail + 1);
+			m_count.fetch_add(1, std::memory_order_relaxed);
 			return true;
 		}
 
@@ -77,7 +79,13 @@ namespace taco
 			*dest = s->m_data;
 			s->m_used.store(false, std::memory_order_release);
 			m_head = ((head + 1) == LENGTH) ? 0 : (head + 1);
+			m_count.fetch_add(-1, std::memory_order_relaxed);
 			return true;
+		}
+
+		size_t count() const
+		{
+			return m_count.load(std::memory_order_relaxed);
 		}
 
 		bool empty() const
@@ -94,6 +102,8 @@ namespace taco
 		size_t						m_head;
 		CACHE_LINE();
 		size_t						m_tail;
+		CACHE_LINE();
+		std::atomic<size_t>	 		m_count;
 	};
 
 	template<class TYPE, size_t LENGTH>
@@ -104,6 +114,7 @@ namespace taco
 		{
 			m_head = 0;
 			m_tail = 0;
+			m_count = 0;
 
 			for (size_t i=0; i<LENGTH; i++)
 				m_items[i].m_used.store(false);
@@ -119,6 +130,7 @@ namespace taco
 			s->m_data = data;
 			s->m_used.store(true, std::memory_order_release);
 			m_tail = ((tail + 1) == LENGTH) ? 0 : (tail + 1);
+			m_count.fetch_add(1, std::memory_order_relaxed);
 			return true;
 		}
 
@@ -145,8 +157,13 @@ namespace taco
 					break;
 				}
 			}
-
+			m_count.fetch_add(-1, std::memory_order_relaxed);
 			return true;
+		}
+
+		size_t count() const
+		{
+			return m_count.load(std::memory_order_relaxed);
 		}
 
 		bool empty() const
@@ -164,6 +181,8 @@ namespace taco
 		std::atomic_size_t			m_head;
 		CACHE_LINE();
 		size_t						m_tail;
+		CACHE_LINE();
+		std::atomic_size_t			m_count;
 	};
 
 	template<class TYPE, size_t LENGTH>
@@ -174,6 +193,7 @@ namespace taco
 		{
 			m_head = 0;
 			m_tail = 0;
+			m_count = 0;
 
 			for (size_t i=0; i<LENGTH; i++)
 				m_items[i].m_used.store(false);
@@ -202,7 +222,7 @@ namespace taco
 					break;
 				}
 			}
-
+			m_count.fetch_add(1, std::memory_order_relaxed);
 			return true;
 		}
 
@@ -216,7 +236,13 @@ namespace taco
 			*dest = s->m_data;
 			s->m_used.store(false, std::memory_order_release);
 			m_head = ((head + 1) == LENGTH) ? 0 : (head + 1);
+			m_count.fetch_add(-1, std::memory_order_relaxed);
 			return true;
+		}
+
+		size_t count() const
+		{
+			return m_count.load(std::memory_order_relaxed);
 		}
 
 		bool empty() const
@@ -233,6 +259,8 @@ namespace taco
 		size_t						m_head;
 		CACHE_LINE();
 		std::atomic_size_t			m_tail;
+		CACHE_LINE();
+		std::atomic_size_t			m_count;
 	};
 
 	template<class TYPE, size_t LENGTH>
@@ -243,6 +271,7 @@ namespace taco
 		{
 			m_head = 0;
 			m_tail = 0;
+			m_count = 0;
 
 			for (size_t i=0; i<LENGTH; i++)
 				m_items[i].m_used.store(false);
@@ -272,6 +301,7 @@ namespace taco
 				}
 			}
 
+			m_count.fetch_add(1, std::memory_order_relaxed);
 			return true;
 		}
 
@@ -299,7 +329,13 @@ namespace taco
 				}
 			}
 
+			m_count.fetch_add(-1, std::memory_order_relaxed);
 			return true;
+		}
+
+		size_t count() const
+		{
+			return m_count.load(std::memory_order_relaxed);
 		}
 
 		bool empty() const
@@ -317,5 +353,7 @@ namespace taco
 		std::atomic_size_t			m_head;
 		CACHE_LINE();
 		std::atomic_size_t			m_tail;
+		CACHE_LINE();
+		std::atomic_size_t			m_count;
 	};
 }

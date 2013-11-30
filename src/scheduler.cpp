@@ -188,7 +188,7 @@ namespace taco
 		s->sharedFibers.push_back(f);
 		s->hasWork.notify_one();
 
-		size_t nfibers = 2;//s->sharedFibers.count();
+		size_t nfibers = s->sharedFibers.count();
 		if (nfibers == 1)
 			return;
 
