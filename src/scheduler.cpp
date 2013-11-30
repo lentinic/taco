@@ -19,14 +19,16 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#include <list>
 #include <thread>
+#include <mutex>
 #include <condition_variable>
+
 #include <basis/thread_local.h>
 #include <basis/assert.h>
 
 #include "taco/scheduler.h"
 #include "ring_buffer.h"
+#include "shared_mutex.h"
 
 namespace taco
 {
@@ -38,7 +40,6 @@ namespace taco
 		initialized,
 		running,
 		sleeping,
-		stopping,
 		stopped
 	};
 
@@ -51,76 +52,58 @@ namespace taco
 		std::condition_variable 		hasWork;
 
 		std::atomic<scheduler_state>	state;
-		scheduler *						next;
-		scheduler *						prev;
+		std::atomic_bool				stopRequested;
+		scheduler_id					next;
+		scheduler_id					prev;
 	};
 
-	static thread_local scheduler *									LocalScheduler = nullptr;
-	static scheduler *												SchedulerList = nullptr;
-	static spinlock													ListLock;
+	static thread_local scheduler_id	LocalScheduler = nullptr;
+	static scheduler_id					SchedulerList = nullptr;
+	static shared_mutex					ListMutex;
 
-	void InitializeScheduler()
+	scheduler_id CreateScheduler()
 	{
-		BASIS_ASSERT(LocalScheduler == nullptr);
-		if (LocalScheduler != nullptr)
-			return;
-
-		fiber::initialize_thread();
-
-		scheduler * s = new scheduler;
+		scheduler_id s = new scheduler;
 		s->state = scheduler_state::initialized;
-		s->isStopRequested = false;
-		LocalScheduler = s;
+		s->stopRequested = false;
 
-		ListLock.lock();
-		scheduler * list = SchedulerList;
-		if (list == nullptr)
+		ListMutex.lock();
+		scheduler_id list = SchedulerList;
+		s->next = list == nullptr ? s : list;
+		s->prev = list == nullptr ? s : list->prev;
+		if (list)
 		{
-			s->next = s->prev = s;
-		}
-		else
-		{
-			s->prev = list->prev;
 			list->prev->next = s;
-
-			s->next = list;
 			list->prev = s;
 		}
 		SchedulerList = s;
-		ListLock.unlock();
+		ListMutex.unlock();
+
+		return s;
 	}
 
-	void ShutdownScheduler()
+	void DestroyScheduler(scheduler_id id)
 	{
-		scheduler * self = LocalScheduler;
-		BASIS_ASSERT(self != nullptr);
-		if (self == nullptr)
-			return;
+		BASIS_ASSERT(id->state == scheduler_state::stopped);
 
-		scheduler_state state = self->state;
-		BASIS_ASSERT(state == scheduler_state::stopped);
-		if (state == scheduler_state::stopped)
+		ListMutex.lock();
+		id->prev->next = id->next;
+		id->next->prev = id->prev;
+		if (SchedulerList == id)
 		{
-			ListLock.lock();
-			self->prev->next = self->next;
-			self->next->prev = self->prev;
-			if (self == SchedulerList)
-			{
-				SchedulerList = (self->prev == self) ? nullptr : self->prev;
-			}
-			ListLock.unlock();
-
-			fiber::shutdown_thread();
-			delete self;
-			LocalScheduler = nullptr;
+			scheduler_id next = SchedulerList->next;
+			SchedulerList = next == id ? nullptr : next;
 		}
+		ListMutex.unlock();
+
+		delete id;
 	}
 
-	static void WakeOtherSchedulers(scheduler * self, size_t count)
+	static void WakeOtherSchedulers(scheduler_id id, size_t count)
 	{
-		ListLock.lock();
-		scheduler * other = self->next;
-		while (count > 1 && other != self)
+		ListMutex.lock_shared();
+		scheduler * other = id->next;
+		while (count > 0 && other != id)
 		{
 			if (other->state == scheduler_state::sleeping)
 			{
@@ -130,95 +113,85 @@ namespace taco
 
 			other = other->next;
 		}
-		ListLock.unlock();
+		ListMutex.unlock_shared();
 	}
 
-	static bool PerformWork(scheduler * self, bool steal = true)
+	static bool PerformWork(scheduler_id id)
 	{
 		fiber todo;
-		if (!self->sharedFibers.pop_front(&todo))
+		if (!id->sharedFibers.pop_front(&todo))
 		{
-			if (!steal)
-				return false;
-
-			ListLock.lock();
-			scheduler * other = self->next;
-			while (other != self && !other->sharedFibers.pop_front(&todo))
+			ListMutex.lock_shared();
+			scheduler_id other = id->next;
+			while (other != id && !other->sharedFibers.pop_front(&todo))
 			{
 				other = other->next;
 			}	
-			ListLock.unlock();
+			ListMutex.unlock_shared();
 
 			if (!todo)
 				return false;
 		}
 
-
 		todo();
-		if (todo.status() == fiber_status::inactive)
+
+		if (todo.status() == fiber_status::active)
 		{
 			ScheduleFiber(todo);
 		}
+
 		return true;
 	}
 
-	void EnterScheduler()
+	void EnterScheduler(scheduler_id id)
 	{
-		scheduler * self = LocalScheduler;
-		BASIS_ASSERT(self != nullptr);
-		if (self == nullptr)
+		BASIS_ASSERT(LocalScheduler == nullptr);
+		if (LocalScheduler != nullptr)
 			return;
+		LocalScheduler = id;
 
-		self->state = scheduler_state::running;
-		std::unique_lock<std::mutex> lock(self->schedLock);
+		id->state = scheduler_state::running;
 
-		while (self->state != scheduler_state::stopping)
+		while (!id->stopRequested)
 		{
-			if (!PerformWork())
+			if (!PerformWork(id))
 			{
-				self->state = scheduler_state::sleeping;
-				self->hasWork.wait(lock);
-				self->state = scheduler_state::running;
+				std::unique_lock<std::mutex> lock(id->schedLock);
+				if (id->stopRequested)
+				{
+					break;
+				}
+
+				id->state = scheduler_state::sleeping;
+				id->hasWork.wait(lock);
+				id->state = scheduler_state::running;
 			}
 		}
 
-		self->state = scheduler_state::stopped;
+		id->state = scheduler_state::stopped;
 	}
 
-	void ExitScheduler()
+	void ExitScheduler(scheduler_id id)
 	{
-		scheduler * self = LocalScheduler;
-		BASIS_ASSERT(self != nullptr);
-		if (self == nullptr)
+		std::unique_lock<std::mutex> lock(id->schedLock);
+		id->stopRequested = true;
+		id->hasWork.notify_one();
+	}
+
+	void ScheduleFiber(const fiber & f, scheduler_id id)
+	{
+		scheduler_id s = (id == nullptr) ? LocalScheduler : id;
+		BASIS_ASSERT(s != nullptr);
+		if (s == nullptr)
 			return;
-	
-		self->state = scheduler_state::stopping;
-	}
 
-	void ScheduleFiber(const fiber & f)
-	{
-		scheduler * self = LocalScheduler;
-		BASIS_ASSERT(self != nullptr);
-		if (self == nullptr)
-			return false;
+		s->sharedFibers.push_back(f);
+		s->hasWork.notify_one();
 
-		unsigned int count = 0;
-		while (!self->sharedFibers.push_back(f) && PerformWork(self, false))
-		{
-			count++;
-			if (count == 512)
-				break;
-		}
-
-		if (count == 512)
-			return false;
-		
-		size_t nfibers = self->sharedFibers.count();
+		size_t nfibers = 2;//s->sharedFibers.count();
 		if (nfibers == 1)
-			return true;
+			return;
 
-		WakeOtherSchedulers(self, nfibers - 1);
-
-		return true;
+		WakeOtherSchedulers(s, nfibers - 1);
 	}
 }

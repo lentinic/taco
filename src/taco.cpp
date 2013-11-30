@@ -19,19 +19,18 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-
-#pragma once
-
+#include <taco/taco.h>
 #include <taco/fiber.h>
 
 namespace taco
 {
-	typedef struct scheduler * scheduler_id;
-
-	scheduler_id CreateScheduler();
-	void DestroyScheduler(scheduler_id id);
-	void EnterScheduler(scheduler_id id);
-	void ExitScheduler(scheduler_id id);
-
-	void ScheduleFiber(const fiber & f, scheduler_id id = nullptr);
+	void Initialize()
+	{
+		fiber::initialize_thread();
+	}
+	
+	void Shutdown()
+	{
+		fiber::shutdown_thread();
+	}	
 }
