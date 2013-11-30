@@ -35,7 +35,6 @@ namespace taco
 
 	void FiberYieldTo(fiber_data * f);
 	void FiberYield();
-	void FiberSuspend();
 	void FiberInvoke(fiber_data * f);
 
 	fiber_status FiberStatus(fiber_data * f);

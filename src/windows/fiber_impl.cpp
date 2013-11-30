@@ -43,7 +43,6 @@ namespace taco
 		void *						handle;
 		fiber_data *				parent;
 		fiber_status				status;
-		fiber_status				nextStatus;
 	};
 
 	static thread_local fiber_data * CurrentFiber = nullptr;
@@ -52,16 +51,12 @@ namespace taco
 
 	static void FiberSwitch(fiber_data * to)
 	{
-		BASIS_ASSERT(to->status != fiber_status::active);
 		BASIS_ASSERT(to->handle != nullptr);
 
 		PreviousFiber = CurrentFiber;
 		CurrentFiber = to;
 
 		SwitchToFiber(to->handle);
-
-		PreviousFiber->status = PreviousFiber->nextStatus;
-		CurrentFiber->status = fiber_status::active;
 	}
 
 	void __stdcall FiberMain(void * arg)
@@ -70,7 +65,6 @@ namespace taco
 		BASIS_ASSERT(self != nullptr);
 		BASIS_ASSERT(self == CurrentFiber);
 
-		PreviousFiber->status = PreviousFiber->nextStatus;
 		self->status = fiber_status::active;
 		self->fn();
 		self->status = fiber_status::complete;
@@ -80,7 +74,7 @@ namespace taco
 		// We shouldn't re-enter the fiber after completion
 		// If we do then assert and spin-yield
 		BASIS_ASSERT_FAILED;
-		while (true);
+		while (true)
 		{
 			FiberYield();
 		}
@@ -127,7 +121,6 @@ namespace taco
 
 		f->parent = CurrentFiber->parent;
 		CurrentFiber->parent = nullptr;
-		CurrentFiber->nextStatus = fiber_status::inactive;
 
 		FiberSwitch(f);
 	}
@@ -139,20 +132,7 @@ namespace taco
 		
 		fiber_data * to = CurrentFiber->parent;
 		CurrentFiber->parent = nullptr;
-		CurrentFiber->nextStatus = fiber_status::inactive;
 
-		FiberSwitch(to);
-	}
-
-	void FiberSuspend()
-	{
-		BASIS_ASSERT(CurrentFiber != nullptr);
-		BASIS_ASSERT(CurrentFiber->parent != nullptr);
-		
-		fiber_data * to = CurrentFiber->parent;
-		CurrentFiber->parent = nullptr;
-		CurrentFiber->nextStatus = fiber_status::suspended;
-		
 		FiberSwitch(to);
 	}
 
@@ -161,7 +141,6 @@ namespace taco
 		BASIS_ASSERT(f != nullptr);
 		
 		f->parent = CurrentFiber;
-		CurrentFiber->nextStatus = fiber_status::inactive;
 
 		FiberSwitch(f);
 	}

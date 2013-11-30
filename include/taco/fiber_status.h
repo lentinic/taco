@@ -30,8 +30,6 @@ namespace taco
 	{
 		initialized,
 		active,
-		inactive,
-		suspended,
 		complete
 	};
 }

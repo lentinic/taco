@@ -97,11 +97,6 @@ namespace taco
 		FiberYield();
 	}
 
-	void fiber::suspend()
-	{
-		FiberSuspend();
-	}
-
 	void fiber::run(fiber_id id)
 	{
 		FiberInvoke(id);

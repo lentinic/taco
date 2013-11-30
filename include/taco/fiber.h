@@ -47,7 +47,6 @@ namespace taco
 		static void shutdown_thread();
 		static void	yield_to(const fiber & other);
 		static void yield();
-		static void suspend();
 		static void	run(fiber_id id);
 		static fiber current();
 
