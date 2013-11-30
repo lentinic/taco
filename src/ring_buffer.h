@@ -84,7 +84,7 @@ namespace taco
 		{
 			const auto s = &m_items[m_head];
 			if (!s->m_used.load(std::memory_order_acquire))
-				return true
+				return true;
 
 			return false;
 		}
