@@ -27,37 +27,22 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <basis/assert.h>
 #include <basis/thread_local.h>
 
-#include <taco/fiber.h>
-#include "../fiber_impl.h"
-
 #if !defined(FIBER_STACK_SZ)
 #define FIBER_STACK_SZ 16384
 #endif
 
 namespace taco
 {
-	struct fiber_data
+	struct fiber
 	{
 		fiber_fn					fn;
-		std::atomic_int				refCount;
 		void *						handle;
-		fiber_data *				parent;
-		fiber_status				status;
+		fiber *						parent;
 	};
 
-	static thread_local fiber_data * CurrentFiber = nullptr;
-	static thread_local fiber_data * PreviousFiber = nullptr;
-	static thread_local fiber_data * ThreadFiber = nullptr;
+	static basis_thread_local fiber_data * CurrentFiber = nullptr;
+	static basis_thread_local fiber_data * ThreadFiber = nullptr;
 
-	static void FiberSwitch(fiber_data * to)
-	{
-		BASIS_ASSERT(to->handle != nullptr);
-
-		PreviousFiber = CurrentFiber;
-		CurrentFiber = to;
-
-		SwitchToFiber(to->handle);
-	}
 
 	void __stdcall FiberMain(void * arg)
 	{
@@ -86,10 +71,8 @@ namespace taco
 
 		ThreadFiber = new fiber_data;
 		ConvertThreadToFiber(ThreadFiber);
-		ThreadFiber->refCount = 1;
 		ThreadFiber->handle = GetCurrentFiber();
 		ThreadFiber->parent = nullptr;
-		ThreadFiber->status = fiber_status::active;
 
 		CurrentFiber = ThreadFiber;
 	}
@@ -97,83 +80,63 @@ namespace taco
 	void FiberShutdownThread()
 	{
 		BASIS_ASSERT(CurrentFiber == ThreadFiber);
-		BASIS_ASSERT(ThreadFiber->refCount == 1);
 		delete ThreadFiber;
 		ThreadFiber = nullptr;
 		CurrentFiber = nullptr;
 	}
 
-	fiber_data * FiberCreate(const fiber_fn & fn)
+	fiber * FiberCreate(const fiber_fn & fn)
 	{
 		fiber_data * f = new fiber_data;
 		f->fn = fn;
-		f->refCount = 1;
 		f->handle = ::CreateFiber(FIBER_STACK_SZ, &FiberMain, f);
 		f->parent = nullptr;
-		f->status = fiber_status::initialized;
 
 		return f;
 	}
 
-	void FiberYieldTo(fiber_data * f)
+	void FiberDestroy(fiber * f)
+	{
+		BASIS_ASSERT(CurrentFiber != f);
+		::DeleteFiber(f->handle);
+		delete f;
+	}
+
+	void FiberYieldTo(fiber * f)
 	{
 		BASIS_ASSERT(f != nullptr);
+		if (f == CurrentFiber)
+			return;
 
 		f->parent = CurrentFiber->parent;
 		CurrentFiber->parent = nullptr;
 
-		FiberSwitch(f);
+		SwitchToFiber(f->handle);
 	}
 
 	void FiberYield()
 	{
 		BASIS_ASSERT(CurrentFiber != nullptr);
 		BASIS_ASSERT(CurrentFiber->parent != nullptr);
-		
-		fiber_data * to = CurrentFiber->parent;
+
+		fiber * to = CurrentFiber->parent;
 		CurrentFiber->parent = nullptr;
 
-		FiberSwitch(to);
+		SwitchToFiber(to->handle);
 	}
 
-	void FiberInvoke(fiber_data * f)
+	void FiberInvoke(fiber * f)
 	{
 		BASIS_ASSERT(f != nullptr);
+		if (f == CurrentFiber)
+			return;
 		
 		f->parent = CurrentFiber;
-
-		FiberSwitch(f);
+		SwitchToFiber(f->handle);
 	}
 
-	fiber_status FiberStatus(fiber_data * f)
-	{
-		return f->status;
-	}
-
-	fiber_data * FiberCurrent()
+	fiber * FiberCurrent()
 	{
 		return CurrentFiber;
-	}
-
-	void FiberAcquire(fiber_data * f)
-	{
-		BASIS_ASSERT(f != nullptr);
-		int prev = f->refCount.fetch_add(1);
-		BASIS_ASSERT(prev > 0);
-	}
-
-	void FiberRelease(fiber_data * f)
-	{
-		if (f == nullptr)
-			return;
-
-		int prev = f->refCount.fetch_sub(1);
-		BASIS_ASSERT(prev > 0);
-		if (prev == 1)
-		{
-			BASIS_ASSERT(f->status != fiber_status::active);
-			::DeleteFiber(f->handle);
-			delete f;
-		}
 	}
 }
