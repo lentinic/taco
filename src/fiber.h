@@ -26,18 +26,29 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 namespace taco
 {
-	typedef struct fiber;
+	struct fiber;
+
 	typedef std::function<void()> fiber_fn;
 
-	void FiberInitializeThread();
-	void FiberShutdownThread();
+	enum class scheduler_command
+	{
+		none,
+		reschedule
+	};
 
+	struct fiber_base
+	{
+		fiber_fn			fn;
+		int 				threadId;
+		scheduler_command	command;
+	};
+
+	void 	FiberInitializeThread();
+	void	FiberShutdownThread();
 	fiber * FiberCreate(const fiber_fn & fn);
-	void FiberDestroy(fiber * f);
-	
-	void FiberYieldTo(fiber * f);
-	void FiberYield();
-	void FiberInvoke(fiber * f);
-
+	void 	FiberDestroy(fiber * f);
+	void 	FiberInvoke(fiber * f);
 	fiber * FiberCurrent();
+	fiber * FiberPrevious();
+	fiber * FiberRoot();
 }

@@ -22,8 +22,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-#include <atomic>
-#include <mutex>
+#include "basis/macros.h"
 
 #if defined(WIN32)
 #define CACHE_LINE_SZ 64
@@ -31,7 +30,5 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #error "Cache line size undefined for current compilation target"
 #endif
 
-#define CONCAT_BASE(x,y) x ## y
-#define CONCAT(x,y) CONCAT_BASE(x,y)
-#define PADDING(n) char CONCAT(pad, __LINE__)[(n)]
+#define PADDING(n) char BASIS_CONCAT(pad, __LINE__)[(n)]
 #define CACHE_LINE() PADDING(CACHE_LINE_SZ)

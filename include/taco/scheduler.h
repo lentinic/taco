@@ -22,16 +22,17 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-#include <taco/fiber.h>
+#include <functional>
 
 namespace taco
 {
-	typedef struct scheduler * scheduler_id;
+	typedef std::function<void()> task_fn;
 
-	scheduler_id CreateScheduler();
-	void DestroyScheduler(scheduler_id id);
-	void EnterScheduler(scheduler_id id);
-	void ExitScheduler(scheduler_id id);
+	void Initialize(int nthreads = -1);
+	void Shutdown();
+	void EnterMain();
+	void ExitMain();
 
-	void ScheduleFiber(const fiber & f, scheduler_id id = nullptr);
+	void Schedule(task_fn fn, int threadid);
+	void Yield();
 }

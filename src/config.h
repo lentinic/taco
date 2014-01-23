@@ -22,49 +22,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-#include <basis/assert.h>
-#include <basis/thread_util.h>
-#include <taco/scheduler.h>
-#include <taco/mutex.h>
-#include "scheduler_priv.h"
-#include "config.h"
+#define TACO_SHARED_TASK_QUEUE_SIZE 512
+#define TACO_PRIVATE_TASK_QUEUE_SIZE 512
+#define TACO_SHARED_FIBER_QUEUE_SIZE 512
+#define TACO_PRIVATE_FIBER_QUEUE_SIZE 512
 
-namespace taco
-{
-	mutex::mutex()
-		: m_locked(INVALID_SCHEDULER_ID)
-	{}
-
-	bool mutex::try_lock()
-	{
-		BASIS_ASSERT(IsSchedulerThread());
-
-		uint32_t expected = INVALID_SCHEDULER_ID;
-		return m_locked.compare_exchange_strong(expected, GetSchedulerId());
-	}
-	
-	void mutex::lock()
-	{
-		int count = 0;
-		while (!try_lock())
-		{
-			basis::cpu_pause();
-			count++;
-			if (count == MUTEX_SPIN_COUNT)
-			{
-				Yield();
-				count = 0;
-			}
-		}
-	}
-
-	void mutex::unlock()
-	{
-		BASIS_ASSERT(IsSchedulerThread());
-
-		uint32_t expected = GetSchedulerId();
-		bool r = m_locked.compare_exchange_strong(expected, INVALID_SCHEDULER_ID);
-
-		BASIS_ASSERT(r);
-	}
-}
+#define MUTEX_SPIN_COUNT 50

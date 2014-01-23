@@ -1,4 +1,4 @@
-/*
+/* 
 Copyright (c) 2013 Chris Lentini
 http://divergentcoder.com
 
@@ -13,24 +13,42 @@ The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANT*IES OF MERCHANTABILITY, FITNESS 
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS 
 FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR 
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER 
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#include <taco/taco.h>
-#include <taco/fiber.h>
+
+#include <taco/task.h>
+#include <basis/assert.h>
+#include "scheduler_priv.h"
 
 namespace taco
 {
-	void Initialize()
+	/*static*/ std::shared_ptr<task> task::run(const std::function<void()> & fn, int threadid)
 	{
-		fiber::initialize_thread();
+		std::shared_ptr<task> t = std::make_shared<task>();
+		
+		t->m_state = task_state::scheduled;
+
+		Schedule([=]() -> void {
+			t->m_state = task_state::running;
+			fn();
+			t->m_state = task_state::complete;
+			t->m_complete.notify_all();
+		}, threadid);
+
+		return t;
 	}
-	
-	void Shutdown()
+
+	void task::sync()
 	{
-		fiber::shutdown_thread();
-	}	
+		m_complete.wait();
+	}
+
+	task_state task::state() const
+	{
+		return m_state;
+	}
 }

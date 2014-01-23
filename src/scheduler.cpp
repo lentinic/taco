@@ -1,4 +1,4 @@
-/*
+	/*
 Copyright (c) 2013 Chris Lentini
 http://divergentcoder.com
 
@@ -19,179 +19,385 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#include <thread>
-#include <mutex>
-#include <condition_variable>
 
-#include <basis/thread_local.h>
 #include <basis/assert.h>
+#include <basis/thread_local.h>
+#include <basis/thread_util.h>
 
-#include "taco/scheduler.h"
+#include "scheduler_priv.h"
+#include "config.h"
 #include "ring_buffer.h"
-#include "shared_mutex.h"
+#include "fiber.h"
 
 namespace taco
 {
-	typedef ring_buffer<fiber,512,async_access_policy::spmc> shared_queue_t;
-	typedef ring_buffer<fiber,512,async_access_policy::mpsc> private_queue_t;
+	typedef ring_buffer<task_fn,TACO_SHARED_TASK_QUEUE_SIZE,async_access_policy::mpmc> shared_task_queue_t;
+	typedef ring_buffer<task_fn,TACO_PRIVATE_TASK_QUEUE_SIZE,async_access_policy::mpmc> private_task_queue_t;
+	typedef ring_buffer<fiber *,TACO_SHARED_FIBER_QUEUE_SIZE,async_access_policy::mpmc> shared_fiber_queue_t;
+	typedef ring_buffer<fiber *,TACO_PRIVATE_FIBER_QUEUE_SIZE,async_access_policy::mpmc> private_fiber_queue_t;
 
-	enum class scheduler_state
+	struct scheduler_data
 	{
-		initialized,
-		running,
-		sleeping,
-		stopped
+		shared_task_queue_t			sharedTasks;
+		private_task_queue_t		privateTasks;
+		shared_fiber_queue_t		sharedFibers;
+		private_fiber_queue_t		privateFibers;
+		
+		std::thread 				thread;
+		std::atomic_bool			exitRequested;
+		std::condition_variable		wakeCondition;
+		std::mutex					wakeMutex;
+		std::vector<fiber*> 		inactive;
+		uint32_t					threadId;
+		bool 						isActive;
 	};
 
-	struct scheduler
+	basis_thread_local static scheduler_data * Scheduler = nullptr;
+
+	static std::atomic<uint32_t> GlobalSharedTaskCount;
+	static std::atomic<uint32_t> AwakeThreadCount;
+	static scheduler_data * SchedulerList = nullptr;
+	static uint32_t ThreadCount = 0;
+
+	static void WorkerLoop();
+
+	static bool HasTasks()
 	{
-		shared_queue_t					sharedFibers;
-		private_queue_t					privateFibers;
-
-		std::mutex 						schedLock;
-		std::condition_variable 		hasWork;
-
-		std::atomic<scheduler_state>	state;
-		std::atomic_bool				stopRequested;
-		scheduler_id					next;
-		scheduler_id					prev;
-	};
-
-	static thread_local scheduler_id	LocalScheduler = nullptr;
-	static scheduler_id					SchedulerList = nullptr;
-	static shared_mutex					ListMutex;
-
-	scheduler_id CreateScheduler()
-	{
-		scheduler_id s = new scheduler;
-		s->state = scheduler_state::initialized;
-		s->stopRequested = false;
-
-		ListMutex.lock();
-		scheduler_id list = SchedulerList;
-		s->next = list == nullptr ? s : list;
-		s->prev = list == nullptr ? s : list->prev;
-		if (list)
-		{
-			list->prev->next = s;
-			list->prev = s;
-		}
-		SchedulerList = s;
-		ListMutex.unlock();
-
-		return s;
+		uint32_t shared = GlobalSharedTaskCount.load(std::memory_order_acquire);
+		return Scheduler->privateTasks.count() > 0 || shared > 0;
 	}
 
-	void DestroyScheduler(scheduler_id id)
+	static bool GetPrivateTask(task_fn * out)
 	{
-		BASIS_ASSERT(id->state == scheduler_state::stopped);
-
-		ListMutex.lock();
-		id->prev->next = id->next;
-		id->next->prev = id->prev;
-		if (SchedulerList == id)
-		{
-			scheduler_id next = SchedulerList->next;
-			SchedulerList = next == id ? nullptr : next;
-		}
-		ListMutex.unlock();
-
-		delete id;
+		return Scheduler->privateTasks.pop_front(out);
 	}
 
-	static void WakeOtherSchedulers(scheduler_id id, size_t count)
+	static bool GetSharedTask(task_fn * out)
 	{
-		ListMutex.lock_shared();
-		scheduler * other = id->next;
-		while (count > 0 && other != id)
+		uint32_t start = Scheduler->threadId;
+		uint32_t id = start;
+		do
 		{
-			if (other->state == scheduler_state::sleeping)
+			if (SchedulerList[id].sharedTasks.pop_front(out))
 			{
-				other->hasWork.notify_one();
-				count--;
+				GlobalSharedTaskCount.fetch_sub(1, std::memory_order_release);
+				return true;
 			}
-
-			other = other->next;
-		}
-		ListMutex.unlock_shared();
+			id = (id + 1) < ThreadCount ? (id + 1) : 0;
+		} while (id != start);
+		return false;
 	}
 
-	static bool PerformWork(scheduler_id id)
+	static void SignalScheduler(scheduler_data * s)
 	{
-		fiber todo;
-		if (!id->sharedFibers.pop_front(&todo))
-		{
-			ListMutex.lock_shared();
-			scheduler_id other = id->next;
-			while (other != id && !other->sharedFibers.pop_front(&todo))
-			{
-				other = other->next;
-			}	
-			ListMutex.unlock_shared();
-
-			if (!todo)
-				return false;
-		}
-
-		todo();
-
-		if (todo.status() == fiber_status::active)
-		{
-			ScheduleFiber(todo);
-		}
-
-		return true;
+		s->wakeCondition.notify_one();
 	}
 
-	void EnterScheduler(scheduler_id id)
+	static void AskForHelp(size_t count)
 	{
-		BASIS_ASSERT(LocalScheduler == nullptr);
-		if (LocalScheduler != nullptr)
-			return;
-		LocalScheduler = id;
-
-		id->state = scheduler_state::running;
-
-		while (!id->stopRequested)
+		uint32_t start = Scheduler->threadId;
+		uint32_t id = (start + 1) < ThreadCount ? (start + 1) : 0;
+		while (count > 0 && id != start)
 		{
-			if (!PerformWork(id))
+			SignalScheduler(SchedulerList + id);
+			count--;
+			id = (id + 1) < ThreadCount ? (id + 1) : 0;
+		}
+	}
+
+	static fiber * GetInactiveFiber()
+	{
+		size_t count = Scheduler->inactive.size();
+		if (count > 0)
+		{
+			fiber * f = Scheduler->inactive[count - 1];
+			Scheduler->inactive.pop_back();
+			return f;
+		}
+		return FiberCreate(&WorkerLoop);
+	}
+
+	static fiber * GetSharedFiber()
+	{
+		fiber * ret = nullptr;
+		uint32_t start = Scheduler->threadId;
+		uint32_t id = start;
+		do
+		{
+			if (SchedulerList[id].sharedFibers.pop_front(&ret))
 			{
-				std::unique_lock<std::mutex> lock(id->schedLock);
-				if (id->stopRequested)
+				return ret;
+			}
+			id = (id + 1) < ThreadCount ? (id + 1) : 0;
+		} while (id != start);
+		return nullptr;
+	}
+
+	static fiber * GetNextScheduledFiber()
+	{
+		fiber * ret = nullptr;
+
+		// TODO:  Something more intelligent...
+		basis_thread_local static int source = 0;
+
+		if (source == 0)
+		{
+			if (!Scheduler->privateFibers.pop_front(&ret))
+			{
+				ret = GetSharedFiber();
+			}
+		}
+		else
+		{
+			ret = GetSharedFiber();
+			if (!ret)
+			{
+				Scheduler->privateFibers.pop_front(&ret);
+			}
+		}
+		source = (ret != nullptr) ? (source ^ 1) : source;
+
+		return ret;
+	}
+
+	static fiber * GetNextFiber()
+	{
+		fiber * next = HasTasks() ? GetInactiveFiber() : GetNextScheduledFiber();
+		next = (next == nullptr) ? GetInactiveFiber() : next;
+		return next;
+	}
+
+	static void FiberSwitchPoint()
+	{
+		fiber_base * prev = (fiber_base *) FiberPrevious();
+		if (prev->command == scheduler_command::reschedule)
+		{
+			if (prev->threadId < 0)
+			{
+				Scheduler->sharedFibers.push_back((fiber *)prev);
+			}
+			else
+			{
+				Scheduler->privateFibers.push_back((fiber *)prev);
+			}
+		}
+	}
+
+	static void WorkerLoop()
+	{
+		FiberSwitchPoint();
+
+		fiber * self = FiberCurrent();
+		fiber_base * base = (fiber_base *) self;
+
+		while (!Scheduler->exitRequested)
+		{
+			task_fn todo;
+			if (GetPrivateTask(&todo))
+			{
+				base->threadId = -1;
+				todo();
+			}
+			else if (GetSharedTask(&todo))
+			{
+				base->threadId = Scheduler->threadId;
+				todo();
+			}
+			else
+			{
+				fiber * next = GetNextScheduledFiber();
+				if (next)
 				{
-					break;
+					Scheduler->inactive.push_back(self);
+					base->command = scheduler_command::none;
+					FiberInvoke(next);
+					FiberSwitchPoint();
 				}
-
-				id->state = scheduler_state::sleeping;
-				id->hasWork.wait(lock);
-				id->state = scheduler_state::running;
+				else
+				{
+					//AwakeThreadCount--;
+					//Sleep(0);
+					//std::unique_lock<std::mutex> lock(Scheduler->wakeMutex);
+					//Scheduler->wakeCondition.wait(lock);
+					//AwakeThreadCount++;
+				}
 			}
 		}
 
-		id->state = scheduler_state::stopped;
+		Scheduler->inactive.push_back(self);
+		FiberInvoke(FiberRoot());
+
+		BASIS_ASSERT_FAILED;
 	}
 
-	void ExitScheduler(scheduler_id id)
+	static void ShutdownScheduler()
 	{
-		std::unique_lock<std::mutex> lock(id->schedLock);
-		id->stopRequested = true;
-		id->hasWork.notify_one();
+		fiber * f = nullptr;
+		while (Scheduler->privateFibers.pop_front(&f))
+		{
+			FiberDestroy(f);
+		}
+		while (Scheduler->sharedFibers.pop_front(&f))
+		{
+			FiberDestroy(f);
+		}
+		for (size_t i=0; i<Scheduler->inactive.size(); i++)
+		{
+			FiberDestroy(Scheduler->inactive[i]);
+		}
+		Scheduler->inactive.clear();
+		Scheduler = nullptr;
 	}
 
-	void ScheduleFiber(const fiber & f, scheduler_id id)
+	void Initialize(int nthreads)
 	{
-		scheduler_id s = (id == nullptr) ? LocalScheduler : id;
-		BASIS_ASSERT(s != nullptr);
-		if (s == nullptr)
-			return;
+		BASIS_ASSERT(ThreadCount == 0);
 
-		s->sharedFibers.push_back(f);
-		s->hasWork.notify_one();
+		ThreadCount = (nthreads <= 0) ? std::thread::hardware_concurrency() : nthreads;
+		AwakeThreadCount = 0;
+		GlobalSharedTaskCount = 0;
 
-		size_t nfibers = s->sharedFibers.count();
-		if (nfibers == 1)
-			return;
+		SchedulerList = new scheduler_data[ThreadCount];
+		for (unsigned i=0; i<ThreadCount; i++)
+		{
+			SchedulerList[i].exitRequested = false;
+			SchedulerList[i].threadId = i;
+			SchedulerList[i].isActive = false;
+		}
 
-		WakeOtherSchedulers(s, nfibers - 1);
+		for (unsigned i=1; i<ThreadCount; i++)
+		{
+			SchedulerList[i].thread = std::thread([=]() -> void {
+				AwakeThreadCount++;
+				FiberInitializeThread();
+				Scheduler = SchedulerList + i;
+
+				fiber * f = FiberCreate(&WorkerLoop);
+
+				Scheduler->isActive = true;
+				FiberInvoke(f);
+				Scheduler->isActive = false;
+
+				ShutdownScheduler();
+				FiberShutdownThread();
+
+				AwakeThreadCount--;
+			});
+		}
+
+		Scheduler = SchedulerList;
+		FiberInitializeThread();
+	}
+
+	void Shutdown()
+	{
+		BASIS_ASSERT(Scheduler == SchedulerList && !Scheduler->isActive);
+
+		for (unsigned i=1; i<ThreadCount; i++)
+		{
+			SchedulerList[i].exitRequested = true;
+			SignalScheduler(SchedulerList + i);
+		}
+
+		for (unsigned i=1; i<ThreadCount; i++)
+		{
+			SchedulerList[i].thread.join();
+		}
+
+		ShutdownScheduler();
+
+		delete [] SchedulerList;
+		SchedulerList = nullptr;
+		ThreadCount = 0;
+
+		FiberShutdownThread();
+	}
+
+	void EnterMain()
+	{
+		BASIS_ASSERT(Scheduler == SchedulerList);
+		BASIS_ASSERT(!Scheduler->isActive);
+
+		fiber * f = FiberCreate(&WorkerLoop);
+
+		AwakeThreadCount++;
+		Scheduler->isActive = true;
+		FiberInvoke(f);
+		Scheduler->isActive = false;
+		AwakeThreadCount--;
+
+		Scheduler->exitRequested = false;
+	}
+
+	void ExitMain()
+	{
+		SchedulerList[0].exitRequested = true;
+		SignalScheduler(SchedulerList);
+	}
+
+	void Schedule(task_fn t, int threadid)
+	{
+		if (threadid >= 0 && (unsigned)threadid < ThreadCount)
+		{
+			BASIS_ASSERT(SchedulerList != nullptr);
+			scheduler_data * s = SchedulerList + threadid;
+			s->privateTasks.push_back(t);
+			if (s != Scheduler)
+			{
+				SignalScheduler(s);
+			}
+		}
+		else
+		{
+			BASIS_ASSERT(Scheduler != nullptr);
+			Scheduler->sharedTasks.push_back(t);
+			uint32_t count = GlobalSharedTaskCount.fetch_add(1, std::memory_order_release);
+			uint32_t awake = AwakeThreadCount.load(std::memory_order_acquire);
+			if (count > awake)
+			{
+				AskForHelp(count - awake);
+			}
+		}
+	}
+
+	void Yield()	
+	{
+		fiber_base * f = (fiber_base *) FiberCurrent();
+		f->command = scheduler_command::reschedule;
+		FiberInvoke(GetNextFiber());
+		FiberSwitchPoint();
+	}
+
+	void Suspend()
+	{
+		fiber_base * f = (fiber_base *) FiberCurrent();
+		f->command = scheduler_command::none;
+		FiberInvoke(GetNextFiber());
+		FiberSwitchPoint();
+	}
+
+	void Resume(fiber * f)
+	{
+		fiber_base * base = (fiber_base *) f;
+		if (base->threadId < 0)
+		{
+			Scheduler->sharedFibers.push_back(f);
+		}
+		else
+		{
+			BASIS_ASSERT(base->threadId >= 0 && (unsigned)base->threadId < ThreadCount);
+			SchedulerList[base->threadId].privateFibers.push_back(f);
+			SignalScheduler(SchedulerList + base->threadId);
+		}
+	}
+
+	bool IsSchedulerThread()
+	{
+		return Scheduler != nullptr && Scheduler->isActive;
+	}
+
+	uint32_t GetSchedulerId()
+	{
+		return Scheduler ? Scheduler->threadId : INVALID_SCHEDULER_ID;
 	}
 }

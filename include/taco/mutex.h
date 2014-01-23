@@ -39,6 +39,6 @@ namespace taco
 		mutex(const mutex &);
 		mutex & operator = (const mutex & );
 
-		std::atomic<int>	m_locked;
+		std::atomic<uint32_t> m_locked;
 	};
 }

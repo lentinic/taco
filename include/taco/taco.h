@@ -22,8 +22,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-namespace taco
-{
-	void Initialize();
-	void Shutdown();
-}
+#include "mutex.h"
+#include "scheduler.h"
+#include "task.h"

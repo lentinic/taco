@@ -22,49 +22,32 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-#include <basis/assert.h>
-#include <basis/thread_util.h>
-#include <taco/scheduler.h>
-#include <taco/mutex.h>
-#include "scheduler_priv.h"
-#include "config.h"
+#include <functional>
+#include <memory>
+#include "condition.h"
 
 namespace taco
 {
-	mutex::mutex()
-		: m_locked(INVALID_SCHEDULER_ID)
-	{}
-
-	bool mutex::try_lock()
+	enum class task_state
 	{
-		BASIS_ASSERT(IsSchedulerThread());
+		initialized,
+		scheduled,
+		running,
+		suspended,
+		complete
+	};
 
-		uint32_t expected = INVALID_SCHEDULER_ID;
-		return m_locked.compare_exchange_strong(expected, GetSchedulerId());
-	}
-	
-	void mutex::lock()
+	class task
 	{
-		int count = 0;
-		while (!try_lock())
-		{
-			basis::cpu_pause();
-			count++;
-			if (count == MUTEX_SPIN_COUNT)
-			{
-				Yield();
-				count = 0;
-			}
-		}
-	}
+	public:
+		static std::shared_ptr<task> run(void (*fn)(), int threadid = -1) { return run(std::function<void()>(fn), threadid); }
+		static std::shared_ptr<task> run(const std::function<void()> & fn, int threadid = -1);
 
-	void mutex::unlock()
-	{
-		BASIS_ASSERT(IsSchedulerThread());
+		void 		sync();
+		task_state 	state() const;
 
-		uint32_t expected = GetSchedulerId();
-		bool r = m_locked.compare_exchange_strong(expected, INVALID_SCHEDULER_ID);
-
-		BASIS_ASSERT(r);
-	}
+	private:
+		condition 	m_complete;
+		task_state	m_state;
+	};
 }
