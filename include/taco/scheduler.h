@@ -33,6 +33,6 @@ namespace taco
 	void EnterMain();
 	void ExitMain();
 
-	void Schedule(task_fn fn, int threadid);
-	void Yield();
+	void Schedule(task_fn fn, int threadid = -1);
+	void Switch();
 }

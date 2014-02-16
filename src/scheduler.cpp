@@ -50,6 +50,7 @@ namespace taco
 		std::vector<fiber*> 		inactive;
 		uint32_t					threadId;
 		bool 						isActive;
+		bool 						isSignaled;
 	};
 
 	basis_thread_local static scheduler_data * Scheduler = nullptr;
@@ -90,6 +91,8 @@ namespace taco
 
 	static void SignalScheduler(scheduler_data * s)
 	{
+		std::unique_lock<std::mutex> lock(s->wakeMutex);
+		s->isSignaled = true;
 		s->wakeCondition.notify_one();
 	}
 
@@ -183,44 +186,56 @@ namespace taco
 		}
 	}
 
+	static bool WorkerIteration(fiber * self)
+	{
+		fiber_base * base = (fiber_base *) self;
+
+		task_fn todo;
+		if (GetPrivateTask(&todo))
+		{
+			base->threadId = Scheduler->threadId;
+			todo();
+			return true;
+		}
+		else if (GetSharedTask(&todo))
+		{
+			base->threadId = -1;
+			todo();
+			return true;
+		}
+		else
+		{
+			fiber * next = GetNextScheduledFiber();
+			if (next)
+			{
+				Scheduler->inactive.push_back(self);
+				base->command = scheduler_command::none;
+				FiberInvoke(next);
+				FiberSwitchPoint();
+				return true;
+			}
+		}
+		return false;
+	}
+
 	static void WorkerLoop()
 	{
 		FiberSwitchPoint();
 
 		fiber * self = FiberCurrent();
-		fiber_base * base = (fiber_base *) self;
 
 		while (!Scheduler->exitRequested)
 		{
-			task_fn todo;
-			if (GetPrivateTask(&todo))
+			if (!WorkerIteration(self))
 			{
-				base->threadId = -1;
-				todo();
-			}
-			else if (GetSharedTask(&todo))
-			{
-				base->threadId = Scheduler->threadId;
-				todo();
-			}
-			else
-			{
-				fiber * next = GetNextScheduledFiber();
-				if (next)
+				std::unique_lock<std::mutex> lock(Scheduler->wakeMutex);
+				if (!Scheduler->isSignaled)
 				{
-					Scheduler->inactive.push_back(self);
-					base->command = scheduler_command::none;
-					FiberInvoke(next);
-					FiberSwitchPoint();
+					AwakeThreadCount--;
+					Scheduler->wakeCondition.wait(lock);
+					AwakeThreadCount++;
 				}
-				else
-				{
-					//AwakeThreadCount--;
-					//Sleep(0);
-					//std::unique_lock<std::mutex> lock(Scheduler->wakeMutex);
-					//Scheduler->wakeCondition.wait(lock);
-					//AwakeThreadCount++;
-				}
+				Scheduler->isSignaled = false;
 			}
 		}
 
@@ -263,6 +278,7 @@ namespace taco
 			SchedulerList[i].exitRequested = false;
 			SchedulerList[i].threadId = i;
 			SchedulerList[i].isActive = false;
+			SchedulerList[i].isSignaled = false;
 		}
 
 		for (unsigned i=1; i<ThreadCount; i++)
@@ -360,7 +376,7 @@ namespace taco
 		}
 	}
 
-	void Yield()	
+	void Switch()	
 	{
 		fiber_base * f = (fiber_base *) FiberCurrent();
 		f->command = scheduler_command::reschedule;
