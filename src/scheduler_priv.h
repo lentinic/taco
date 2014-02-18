@@ -38,5 +38,4 @@ namespace taco
 	void Suspend();
 	void Resume(fiber * f);
 	bool IsSchedulerThread();
-	uint32_t GetSchedulerId();
 }

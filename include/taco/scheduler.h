@@ -23,6 +23,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #pragma once
 
 #include <functional>
+#include <stdint.h>
 
 namespace taco
 {
@@ -35,4 +36,7 @@ namespace taco
 
 	void Schedule(task_fn fn, int threadid = -1);
 	void Switch();
+	
+	uint32_t GetThreadCount();
+	uint32_t GetSchedulerId();
 }

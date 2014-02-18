@@ -218,14 +218,26 @@ namespace taco
 		return false;
 	}
 
+	static void CheckForExitCondition()
+	{
+		if (Scheduler->exitRequested)
+		{
+			Scheduler->inactive.push_back(FiberCurrent());
+			FiberInvoke(FiberRoot());
+			BASIS_ASSERT_FAILED;
+		}
+	}
+
 	static void WorkerLoop()
 	{
 		FiberSwitchPoint();
 
 		fiber * self = FiberCurrent();
 
-		while (!Scheduler->exitRequested)
+		for(;;)
 		{
+			CheckForExitCondition();
+
 			if (!WorkerIteration(self))
 			{
 				std::unique_lock<std::mutex> lock(Scheduler->wakeMutex);
@@ -238,11 +250,6 @@ namespace taco
 				Scheduler->isSignaled = false;
 			}
 		}
-
-		Scheduler->inactive.push_back(self);
-		FiberInvoke(FiberRoot());
-
-		BASIS_ASSERT_FAILED;
 	}
 
 	static void ShutdownScheduler()
@@ -378,6 +385,8 @@ namespace taco
 
 	void Switch()	
 	{
+		CheckForExitCondition();
+
 		fiber_base * f = (fiber_base *) FiberCurrent();
 		f->command = scheduler_command::reschedule;
 		FiberInvoke(GetNextFiber());
@@ -386,6 +395,8 @@ namespace taco
 
 	void Suspend()
 	{
+		CheckForExitCondition();
+		
 		fiber_base * f = (fiber_base *) FiberCurrent();
 		f->command = scheduler_command::none;
 		FiberInvoke(GetNextFiber());
@@ -415,5 +426,10 @@ namespace taco
 	uint32_t GetSchedulerId()
 	{
 		return Scheduler ? Scheduler->threadId : INVALID_SCHEDULER_ID;
+	}
+
+	uint32_t GetThreadCount()
+	{
+		return ThreadCount;	
 	}
 }
