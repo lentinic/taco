@@ -1,9 +1,8 @@
 #include <basis/assert.h>
-#include <basis/timer.h>
 #include <basis/bitset.h>
+#include <basis/timer.h>
 #include <taco/taco.h>
 #include <iostream>
-
 
 #define TEST_TIMEOUT_MS 2000
 
@@ -62,7 +61,7 @@ void test_switch()
 	// If the switching doesn't work then this task will hog the thread it gets grabbed by
 	// So if we schedule more of these tasks than there are threads we'll never see all of them entered
 	auto fn = [&](unsigned index) -> void {
-		did_run.set_or(index, 1);
+		did_run.set_bit(index, 1);
 		for (;;)
 		{
 			taco::Switch();
@@ -101,14 +100,15 @@ int main()
 	test_initialize_shutdown();
 	test_schedule();
 	test_switch();
+	float elapsed = basis::GetTimeElapsedMS(start) / 1000.f;
 
 	if (ErrorCount > 0)
 	{
-		std::cout<<"Scheduler tests completed with "<<ErrorCount<<" error(s) in "<<(basis::GetTimeElapsedMS(start) / 1000.f)<<" seconds."<<std::endl;
+		std::cout<<"Scheduler tests completed with "<<ErrorCount<<" error(s) in "<<elapsed<<" seconds."<<std::endl;
 	}
 	else
 	{
-		std::cout<<"Scheduler tests completed succesfully in "<<(basis::GetTimeElapsedMS(start) / 1000.0f)<<" seconds."<<std::endl;
+		std::cout<<"Scheduler tests completed succesfully in "<<elapsed<<" seconds."<<std::endl;
 	}
 
 	return 0;
