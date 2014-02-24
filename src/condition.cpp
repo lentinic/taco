@@ -34,6 +34,16 @@ namespace taco
 	condition::condition()
 	{}
 
+	condition::~condition()
+	{
+		while (!m_waiting.empty())
+		{
+			fiber * f = m_waiting.front();
+			FiberDestroy(f);
+			m_waiting.pop_front();
+		}
+	}
+
 	void condition::wait()
 	{
 		fiber * cur = FiberCurrent();
