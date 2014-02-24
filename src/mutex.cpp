@@ -52,7 +52,7 @@ namespace taco
 			count++;
 			if (count == MUTEX_SPIN_COUNT)
 			{
-				Yield();
+				Switch();
 				count = 0;
 			}
 		}
