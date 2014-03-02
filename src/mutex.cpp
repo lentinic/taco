@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2013 Chris Lentini
+Copyright (c) 2014 Chris Lentini
 http://divergentcoder.com
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of 
@@ -48,12 +48,15 @@ namespace taco
 		int count = 0;
 		while (!try_lock())
 		{
-			basis::cpu_pause();
 			count++;
 			if (count == MUTEX_SPIN_COUNT)
 			{
 				Switch();
 				count = 0;
+			}
+			else
+			{
+				basis::cpu_pause();
 			}
 		}
 	}
