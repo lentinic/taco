@@ -1,12 +1,19 @@
-#include <basis/assert.h>
 #include <basis/bitset.h>
-#include <basis/timer.h>
+#include <basis/unit_test.h>
 #include <taco/taco.h>
 #include <iostream>
 
 #define TEST_TIMEOUT_MS 2000
 
-unsigned ErrorCount = 0;
+void test_initialize_shutdown();
+void test_schedule();
+void test_switch();
+
+BASIS_TEST_LIST_BEGIN()
+	BASIS_DECLARE_TEST(test_initialize_shutdown)
+	BASIS_DECLARE_TEST(test_schedule)
+	BASIS_DECLARE_TEST(test_switch)
+BASIS_TEST_LIST_END()
 
 void test_initialize_shutdown()
 {
@@ -38,18 +45,8 @@ void test_schedule()
 
 	taco::Shutdown();
 
-	BASIS_ASSERT_SIGNAL(a == 100, [=]() -> bool{
-		if (timeout)
-		{
-			std::cout<<"Error: \"test_schedule\" timed out after at least "<<TEST_TIMEOUT_MS<<" ms"<<std::endl;
-		}
-		else
-		{
-			std::cout<<"Error: \"test_schedule\", the task ran but set variable \"a\" to an unexpected value ("<<a<<")"<<std::endl;
-		}
-		ErrorCount++;
-		return false;
-	});
+	BASIS_TEST_VERIFY_MSG(!timeout, "Timed out after at least %d ms", TEST_TIMEOUT_MS);
+	BASIS_TEST_VERIFY_MSG(timeout || a == 100, "Variable \"a\" set to an unexpected value - %d", a);
 }
 
 void test_switch()
@@ -87,29 +84,11 @@ void test_switch()
 
 	taco::Shutdown();
 
-	BASIS_ASSERT_SIGNAL(!timeout, [=]() -> bool{
-		std::cout<<"Error: \"test_switch\" timed out after at least "<<TEST_TIMEOUT_MS<<" ms.  Not all tasks were entered."<<std::endl;
-		ErrorCount++;
-		return false;
-	});
+	BASIS_TEST_VERIFY_MSG(!timeout, "timeout after at leat %d ms.  Not all tasks were entered.", TEST_TIMEOUT_MS);
 }
 
 int main()
 {
-	auto start = basis::GetTimestamp();
-	test_initialize_shutdown();
-	test_schedule();
-	test_switch();
-	float elapsed = basis::GetTimeElapsedMS(start) / 1000.f;
-
-	if (ErrorCount > 0)
-	{
-		std::cout<<"Scheduler tests completed with "<<ErrorCount<<" error(s) in "<<elapsed<<" seconds."<<std::endl;
-	}
-	else
-	{
-		std::cout<<"Scheduler tests completed succesfully in "<<elapsed<<" seconds."<<std::endl;
-	}
-
+	BASIS_RUN_TESTS();
 	return 0;
 }
