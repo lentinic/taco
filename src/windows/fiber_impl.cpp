@@ -59,6 +59,8 @@ namespace taco
 
 		ThreadFiber = new fiber;
 		ConvertThreadToFiber(ThreadFiber);
+		ThreadFiber->base.on_resume = nullptr;
+		ThreadFiber->base.on_suspend = nullptr;
 		ThreadFiber->base.threadId = -1;
 		ThreadFiber->handle = GetCurrentFiber();
 		CurrentFiber = ThreadFiber;
@@ -76,6 +78,8 @@ namespace taco
 		fiber * f = new fiber;
 		f->base.threadId = -1;
 		f->base.fn = fn;
+		f->base.on_resume = nullptr;
+		f->base.on_suspend = nullptr;
 		f->handle = ::CreateFiber(FIBER_STACK_SZ, &FiberMain, f);
 		return f;
 	}
