@@ -68,7 +68,7 @@ namespace taco
 
 	void shared_mutex::unlock_shared()
 	{
-		uint32_t state = m_state.fetch_add(-1, std::memory_order_release);
+		uint32_t state = m_state.fetch_sub(1, std::memory_order_release);
 		BASIS_ASSERT((state & (~EXCLUSIVE)) != 0);
 	}
 
