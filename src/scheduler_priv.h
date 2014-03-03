@@ -36,6 +36,8 @@ namespace taco
 	struct fiber;
 	
 	void Suspend();
+	void Suspend(std::function<void()> on_suspend, std::function<void()> on_resume);
+	
 	void Resume(fiber * f);
 	bool IsSchedulerThread();
 }

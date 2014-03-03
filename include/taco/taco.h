@@ -22,6 +22,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-#include "mutex.h"
 #include "scheduler.h"
+#include "mutex.h"
+#include "shared_mutex.h"
+#include "condition.h"
 #include "task.h"

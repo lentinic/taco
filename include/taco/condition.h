@@ -34,13 +34,24 @@ namespace taco
 		condition();
 		~condition();
 		
-		void wait();
+		template<class LOCK_TYPE>
+		void wait(LOCK_TYPE & lock)
+		{
+			_wait([&]() -> void {
+				lock.unlock();
+			}, [&]() -> void {
+				lock.lock();
+			});
+		}
+
 		void notify_one();
 		void notify_all();
 
 	private:
 		condition(const condition &);
 		condition & operator = (const condition & );
+
+		void _wait(std::function<void()> on_suspend, std::function<void()> on_resume);
 
 		std::deque<fiber *> 	m_waiting;
 		mutex 					m_mutex;

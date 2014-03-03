@@ -13,7 +13,8 @@ Build {
 				"src/windows/fiber_impl.cpp",
 				"src/task.cpp",
 				"src/mutex.cpp",
-				"src/condition.cpp"
+				"src/condition.cpp",
+				"src/shared_mutex.cpp"
 			}
 		}
 		Program {

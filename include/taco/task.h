@@ -24,7 +24,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <functional>
 #include <memory>
+
 #include "condition.h"
+#include "shared_mutex.h"
 
 namespace taco
 {
@@ -37,17 +39,21 @@ namespace taco
 		complete
 	};
 
+	class task;
+	typedef std::shared_ptr<task> task_handle;
+
 	class task
 	{
 	public:
-		static std::shared_ptr<task> run(void (*fn)(), int threadid = -1) { return run(std::function<void()>(fn), threadid); }
-		static std::shared_ptr<task> run(const std::function<void()> & fn, int threadid = -1);
+		static task_handle run(void (*fn)(), int threadid = -1) { return run(std::function<void()>(fn), threadid); }
+		static task_handle run(const std::function<void()> & fn, int threadid = -1);
 
 		void 		sync();
 		task_state 	state() const;
 
 	private:
-		condition 	m_complete;
-		task_state	m_state;
+		condition 		m_complete;
+		task_state		m_state;
+		shared_mutex	m_rwmutex;
 	};
 }

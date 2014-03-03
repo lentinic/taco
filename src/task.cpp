@@ -21,21 +21,31 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
 #include <taco/task.h>
+#include <taco/shared_lock.h>
 #include <basis/assert.h>
 #include "scheduler_priv.h"
 
 namespace taco
 {
-	/*static*/ std::shared_ptr<task> task::run(const std::function<void()> & fn, int threadid)
+	/*static*/ task_handle task::run(const std::function<void()> & fn, int threadid)
 	{
-		std::shared_ptr<task> t = std::make_shared<task>();
-		
+		auto t = std::make_shared<task>();
+
 		t->m_state = task_state::scheduled;
 
 		Schedule([=]() -> void {
-			t->m_state = task_state::running;
+			{
+				std::unique_lock<taco::shared_mutex> lock(t->m_rwmutex);
+				t->m_state = task_state::running;
+			}
+
 			fn();
-			t->m_state = task_state::complete;
+
+			{
+				std::unique_lock<taco::shared_mutex> lock(t->m_rwmutex);
+				t->m_state = task_state::complete;
+			}
+
 			t->m_complete.notify_all();
 		}, threadid);
 
@@ -44,7 +54,11 @@ namespace taco
 
 	void task::sync()
 	{
-		m_complete.wait();
+		taco::shared_lock<taco::shared_mutex> lock(m_rwmutex);
+		if (m_state != task_state::complete)
+		{
+			m_complete.wait(lock);
+		}
 	}
 
 	task_state task::state() const
