@@ -44,6 +44,21 @@ Build {
 				GENERATE_PDB = "1"
 			}
 		},
+		{
+			Name = "win64-msvc_analysis",
+			SupportedHosts = { "windows" },
+			Tools = { { "msvc", TargetArch = "x64" } },
+			Env = {
+				CPPDEFS = { "WIN32" },
+				CXXOPTS = { 
+					"/W4", 
+					"/EHsc",
+					{ "/MTd", Config = "*-*-debug" },
+					"/FS",
+					"/analyze",
+				}
+			}
+		},
 	},
 
 	Variants = { "debug", "release" },
