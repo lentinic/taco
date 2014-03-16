@@ -1,7 +1,8 @@
-#include <basis/bitset.h>
+#include <basis/bitvector.h>
 #include <basis/unit_test.h>
 #include <taco/taco.h>
 #include <iostream>
+#include <mutex>
 
 #define TEST_TIMEOUT_MS 2000
 
@@ -53,16 +54,23 @@ void test_switch()
 {
 	taco::Initialize(); 
 
-	basis::bitset did_run(taco::GetThreadCount() + 1);
+	std::mutex mutex;
+	basis::bitvector did_run(taco::GetThreadCount() + 1);
 
 	// If the switching doesn't work then this task will hog the thread it gets grabbed by
 	// So if we schedule more of these tasks than there are threads we'll never see all of them entered
 	auto fn = [&](unsigned index) -> void {
-		did_run.set_bit(index, 1);
+		
+		{
+			std::unique_lock<std::mutex> lock(mutex);
+			did_run.set_bit(index, true);
+		}
+
 		for (;;)
 		{
 			taco::Switch();
 		}
+
 	};
 
 	auto start = basis::GetTimestamp();
@@ -73,7 +81,7 @@ void test_switch()
 		taco::Schedule(std::bind(fn, i));
 	}
 
-	while (!did_run.test_all_one())
+	while (!did_run.test_all(true))
 	{
 		if (basis::GetTimeElapsedMS(start) > TEST_TIMEOUT_MS)
 		{
