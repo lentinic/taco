@@ -35,6 +35,17 @@ void test_schedule()
 		a = 100;
 	});
 
+	std::function<void(int)> fn = [&](uint32_t expected) -> void {
+		uint32_t current = taco::GetSchedulerId();
+		BASIS_TEST_VERIFY_MSG(current == expected, "Expected task to run on thread %d; ran on %d",
+			expected, current);
+	};
+
+	for (uint32_t i=0; i<taco::GetThreadCount(); i++)
+	{
+		taco::Schedule(std::bind(fn, i), i);
+	}
+
 	while (a == 0)
 	{
 		if (basis::GetTimeElapsedMS(start) > TEST_TIMEOUT_MS)
