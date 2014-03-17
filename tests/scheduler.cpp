@@ -35,16 +35,21 @@ void test_schedule()
 		a = 100;
 	});
 
-	std::function<void(int)> fn = [&](uint32_t expected) -> void {
-		uint32_t current = taco::GetSchedulerId();
-		BASIS_TEST_VERIFY_MSG(current == expected, "Expected task to run on thread %d; ran on %d",
-			expected, current);
-	};
-
+	std::atomic<uint32_t> b(0);
 	for (uint32_t i=0; i<taco::GetThreadCount(); i++)
 	{
-		taco::Schedule(std::bind(fn, i), i);
+		taco::Schedule([i,&b]() -> void {
+			uint32_t current = taco::GetSchedulerId();
+			BASIS_TEST_VERIFY_MSG(current == i, "Expected task to run on thread %d; ran on %d", i, current);
+			
+			if (b.fetch_add(1) == (taco::GetThreadCount() - 1))
+			{
+				taco::ExitMain();
+			}
+		}, i);
 	}
+
+	taco::EnterMain();
 
 	while (a == 0)
 	{
