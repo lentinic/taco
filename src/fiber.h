@@ -39,8 +39,6 @@ namespace taco
 	struct fiber_base
 	{
 		fiber_fn			fn;
-		fiber_fn *			on_resume;
-		fiber_fn *			on_suspend;
 		int 				threadId;
 		scheduler_command	command;
 	};
