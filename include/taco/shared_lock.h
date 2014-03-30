@@ -31,10 +31,10 @@ namespace taco
 	{
 	public:
 		shared_lock(MTYPE & m)
-			:	m_mutex(&m),
-				m_locked(true)
+			:	m_mutex(&m)
 		{
 			m_mutex->lock_shared();
+			m_locked = true;
 		}
 
 		shared_lock(shared_lock && other)
@@ -89,7 +89,7 @@ namespace taco
 		{
 			BASIS_ASSERT(m_mutex != nullptr);
 			BASIS_ASSERT(m_locked);
-			m_mutex->unlock();
+			m_mutex->unlock_shared();
 			m_locked = false;
 		}
 
