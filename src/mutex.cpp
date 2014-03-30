@@ -56,7 +56,7 @@ namespace taco
 			}
 			else
 			{
-				basis::cpu_pause();
+				basis::cpu_yield();
 			}
 		}
 	}

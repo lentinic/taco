@@ -39,10 +39,10 @@ namespace taco
 
 	bool shared_mutex::try_lock_shared()
 	{
-		uint32_t state = m_state.fetch_add(1, std::memory_order_acquire);
+		uint32_t state = m_state.fetch_add(1);
 		if (!!(state & EXCLUSIVE))
 		{
-			state = m_state.fetch_sub(1, std::memory_order_release);
+			state = m_state.fetch_sub(1);
 			return false;
 		}
 		return true;
@@ -61,34 +61,52 @@ namespace taco
 			}
 			else
 			{
-				basis::cpu_pause();
+				basis::cpu_yield();
 			}
 		}
 	}
 
 	void shared_mutex::unlock_shared()
 	{
-		uint32_t state = m_state.fetch_sub(1, std::memory_order_release);
+		uint32_t state = m_state.fetch_sub(1);
 		BASIS_ASSERT((state & (~EXCLUSIVE)) != 0);
 	}
 
 	bool shared_mutex::try_lock()
 	{
 		uint32_t expected = 0;
-		return m_state.compare_exchange_strong(expected, EXCLUSIVE, std::memory_order_acq_rel);
+		return m_state.compare_exchange_strong(expected, EXCLUSIVE);
 	}
 
 	void shared_mutex::lock()
 	{
-		// Try to acquire the lock, but if we can't prevent further shared locks
-		uint32_t state = m_state.fetch_or(EXCLUSIVE, std::memory_order_acquire);
-		if (state == 0)
-			return;
-
-		uint32_t expected = EXCLUSIVE;
+		// Try to acquire the lock, but if we can't try and prevent further shared locks
+		uint32_t state = m_state.fetch_or(EXCLUSIVE);
 		unsigned counter = 0;
-		while (!m_state.compare_exchange_strong(expected, EXCLUSIVE, std::memory_order_acq_rel))
+
+		while (state != 0)
 		{
+			if ((state & EXCLUSIVE) == 0)
+			{
+				// we own the next lock, wait for shared locks to release
+				while ((m_state.load() & (~EXCLUSIVE)) != 0)
+				{
+					counter++;
+					if (counter == MUTEX_SPIN_COUNT)
+					{
+						Switch();
+						counter = 0;
+					}
+					else
+					{
+						basis::cpu_yield();
+					}
+				}	
+				return;
+			}
+
+			// someone else owns the lock or is waiting on the lock
+
 			counter++;
 			if (counter == MUTEX_SPIN_COUNT)
 			{
@@ -97,14 +115,16 @@ namespace taco
 			}
 			else
 			{
-				basis::cpu_pause();
+				basis::cpu_yield();
 			}
+
+			state = m_state.fetch_or(EXCLUSIVE);
 		}
 	}
 
 	void shared_mutex::unlock()
 	{
-		uint32_t state = m_state.fetch_and(~EXCLUSIVE, std::memory_order_release);
+		uint32_t state = m_state.fetch_and(~EXCLUSIVE);
 		BASIS_ASSERT(!!(state & EXCLUSIVE));
 	}
 }
