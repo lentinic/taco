@@ -22,6 +22,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
+#include <mutex>
 #include <deque>
 #include "mutex.h"
 
@@ -39,9 +40,9 @@ namespace taco
 		{
 			_wait([&]() -> void {
 				lock.unlock();
-			}, [&]() -> void {
-				lock.lock();
 			});
+
+			lock.lock();
 		}
 
 		void notify_one();
@@ -51,7 +52,7 @@ namespace taco
 		condition(const condition &);
 		condition & operator = (const condition & );
 
-		void _wait(std::function<void()> on_suspend, std::function<void()> on_resume);
+		void _wait(std::function<void()> on_suspend);
 
 		std::deque<fiber *> 	m_waiting;
 		mutex 					m_mutex;

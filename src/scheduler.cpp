@@ -48,6 +48,9 @@ namespace taco
 		std::condition_variable		wakeCondition;
 		std::mutex					wakeMutex;
 		std::vector<fiber*> 		inactive;
+
+		std::function<void()> *		onSuspend;
+
 		uint32_t					threadId;
 		bool 						isActive;
 		bool 						isSignaled;
@@ -189,8 +192,14 @@ namespace taco
 	{
 		CheckForExitCondition();
 
-		fiber_base * cur = (fiber_base *) FiberCurrent();
 		fiber_base * prev = (fiber_base *) FiberPrevious();
+
+		if (Scheduler->onSuspend)
+		{
+			std::function<void()> * fn = Scheduler->onSuspend;
+			Scheduler->onSuspend = nullptr;
+			(*fn)();
+		}
 
 		if (prev->command == scheduler_command::reschedule)
 		{
@@ -202,17 +211,6 @@ namespace taco
 			{
 				Scheduler->privateFibers.push_back((fiber *)prev);
 			}
-		}
-
-		if (prev->on_suspend)
-		{
-			(*prev->on_suspend)();
-			prev->on_suspend = nullptr;
-		}
-		if (cur->on_resume)
-		{
-			(*cur->on_resume)();
-			cur->on_resume = nullptr;
 		}
 	}
 
@@ -262,8 +260,8 @@ namespace taco
 				if (!Scheduler->isSignaled)
 				{
 					Scheduler->wakeCondition.wait(lock);
-					Scheduler->isSignaled = false;
 				}
+				Scheduler->isSignaled = false;
 			}
 		}
 	}
@@ -305,6 +303,7 @@ namespace taco
 			SchedulerList[i].threadId = i;
 			SchedulerList[i].isActive = false;
 			SchedulerList[i].isSignaled = false;
+			SchedulerList[i].onSuspend = nullptr;
 		}
 
 		for (unsigned i=1; i<ThreadCount; i++)
@@ -415,17 +414,18 @@ namespace taco
 		FiberSwitchPoint();
 	}
 
-	void Suspend(std::function<void()> on_suspend, std::function<void()> on_resume)
+	void Suspend(std::function<void()> on_suspend)
 	{
 		fiber_base * f = (fiber_base *) FiberCurrent();
 		f->command = scheduler_command::none;
-		f->on_suspend = &on_suspend;
-		f->on_resume = &on_resume;
 
+		// potentially unsafe - depends on what happens to this fiber's stack
+		Scheduler->onSuspend = &on_suspend;
+		
 		FiberInvoke(GetNextFiber());
 		FiberSwitchPoint();
 	}
-
+	
 	void Resume(fiber * f)
 	{
 		fiber_base * base = (fiber_base *) f;

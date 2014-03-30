@@ -44,22 +44,21 @@ namespace taco
 		}
 	}
 
-	void condition::_wait(std::function<void()> on_suspend, std::function<void()> on_resume)
+	void condition::_wait(std::function<void()> on_suspend)
 	{
 		fiber * cur = FiberCurrent();
 		BASIS_ASSERT(cur);
 
-		{
-			std::lock_guard<mutex> lock(m_mutex);
+		Suspend([&]() -> void {
+			std::unique_lock<mutex> lock(m_mutex);
 			m_waiting.push_back(cur);
-		}
-
-		Suspend(on_suspend, on_resume);
+			on_suspend();
+		});
 	}
 
 	void condition::notify_one()
 	{
-		std::lock_guard<mutex> lock(m_mutex);
+		std::unique_lock<mutex> lock(m_mutex);
 		fiber * f = m_waiting.front();
 		m_waiting.pop_front();
 		Resume(f);
@@ -67,7 +66,7 @@ namespace taco
 
 	void condition::notify_all()
 	{
-		std::lock_guard<mutex> lock(m_mutex);
+		std::unique_lock<mutex> lock(m_mutex);
 		while (!m_waiting.empty())
 		{
 			fiber * f = m_waiting.front();
