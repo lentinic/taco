@@ -23,21 +23,28 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <basis/assert.h>
 #include <basis/thread_local.h>
 #include <basis/thread_util.h>
+#include <basis/chunk_queue.h>
 
 #include "scheduler_priv.h"
 #include "config.h"
-#include "ring_buffer.h"
 #include "fiber.h"
 
 namespace taco
 {
-	typedef ring_buffer<task_fn,TACO_SHARED_TASK_QUEUE_SIZE,async_access_policy::mpmc> shared_task_queue_t;
-	typedef ring_buffer<task_fn,TACO_PRIVATE_TASK_QUEUE_SIZE,async_access_policy::mpmc> private_task_queue_t;
-	typedef ring_buffer<fiber *,TACO_SHARED_FIBER_QUEUE_SIZE,async_access_policy::mpmc> shared_fiber_queue_t;
-	typedef ring_buffer<fiber *,TACO_PRIVATE_FIBER_QUEUE_SIZE,async_access_policy::mpmc> private_fiber_queue_t;
+	typedef basis::chunk_queue<task_fn,basis::queue_access_policy::spmc> shared_task_queue_t;
+	typedef basis::chunk_queue<task_fn,basis::queue_access_policy::mpsc> private_task_queue_t;
+	typedef basis::chunk_queue<fiber *,basis::queue_access_policy::spmc> shared_fiber_queue_t;
+	typedef basis::chunk_queue<fiber *,basis::queue_access_policy::mpsc> private_fiber_queue_t;
 
 	struct scheduler_data
 	{
+		scheduler_data()
+			:	sharedTasks(PUBLIC_TASKQ_CHUNK_SIZE),
+				privateTasks(PRIVATE_TASKQ_CHUNK_SIZE),
+				sharedFibers(PUBLIC_FIBERQ_CHUNK_SIZE),
+				privateFibers(PRIVATE_FIBERQ_CHUNK_SIZE)
+		{}
+
 		shared_task_queue_t			sharedTasks;
 		private_task_queue_t		privateTasks;
 		shared_fiber_queue_t		sharedFibers;
@@ -48,6 +55,7 @@ namespace taco
 		std::condition_variable		wakeCondition;
 		std::mutex					wakeMutex;
 		std::vector<fiber*> 		inactive;
+		std::atomic<uint32_t>		privateTaskCount;
 
 		std::function<void()> *		onSuspend;
 
@@ -66,16 +74,18 @@ namespace taco
 
 	static bool HasTasks()
 	{
-		uint32_t shared = GlobalSharedTaskCount.load(std::memory_order_relaxed);
-		return Scheduler->privateTasks.count() > 0 || shared > 0;
+		uint32_t shared_count = GlobalSharedTaskCount.load(std::memory_order_relaxed);
+		uint32_t private_count = Scheduler->privateTaskCount.load(std::memory_order_relaxed);
+
+		return (shared_count > 0) || (private_count > 0);
 	}
 
-	static bool GetPrivateTask(task_fn * out)
+	static bool GetPrivateTask(task_fn & out)
 	{
 		return Scheduler->privateTasks.pop_front(out);
 	}
 
-	static bool GetSharedTask(task_fn * out)
+	static bool GetSharedTask(task_fn & out)
 	{
 		uint32_t start = Scheduler->threadId;
 		uint32_t id = start;
@@ -135,7 +145,7 @@ namespace taco
 		uint32_t id = start;
 		do
 		{
-			if (SchedulerList[id].sharedFibers.pop_front(&ret))
+			if (SchedulerList[id].sharedFibers.pop_front(ret))
 			{
 				return ret;
 			}
@@ -153,7 +163,7 @@ namespace taco
 
 		if (source == 0)
 		{
-			if (!Scheduler->privateFibers.pop_front(&ret))
+			if (!Scheduler->privateFibers.pop_front(ret))
 			{
 				ret = GetSharedFiber();
 			}
@@ -163,7 +173,7 @@ namespace taco
 			ret = GetSharedFiber();
 			if (!ret)
 			{
-				Scheduler->privateFibers.pop_front(&ret);
+				Scheduler->privateFibers.pop_front(ret);
 			}
 		}
 		source = (ret != nullptr) ? (source ^ 1) : source;
@@ -220,13 +230,14 @@ namespace taco
 		fiber_base * base = (fiber_base *) self;
 
 		task_fn todo;
-		if (GetPrivateTask(&todo))
+		if (GetPrivateTask(todo))
 		{
+			Scheduler->privateTaskCount.fetch_sub(1, std::memory_order_relaxed);
 			base->threadId = Scheduler->threadId;
 			todo();
 			return true;
 		}
-		else if (GetSharedTask(&todo))
+		else if (GetSharedTask(todo))
 		{
 			base->threadId = -1;
 			todo();
@@ -270,12 +281,12 @@ namespace taco
 	{
 		fiber * f = nullptr;
 
-		while (Scheduler->privateFibers.pop_front(&f))
+		while (Scheduler->privateFibers.pop_front(f))
 		{
 			FiberDestroy(f);
 		}
 
-		while (Scheduler->sharedFibers.pop_front(&f))
+		while (Scheduler->sharedFibers.pop_front(f))
 		{
 			FiberDestroy(f);
 		}
@@ -379,6 +390,7 @@ namespace taco
 			BASIS_ASSERT(SchedulerList != nullptr);
 			scheduler_data * s = SchedulerList + threadid;
 			s->privateTasks.push_back(t);
+			s->privateTaskCount.fetch_add(1, std::memory_order_relaxed);
 			if (s != Scheduler)
 			{
 				SignalScheduler(s);
