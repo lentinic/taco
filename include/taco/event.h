@@ -38,6 +38,11 @@ namespace taco
 		void signal();
 		void reset();
 
+		operator bool () const
+		{
+			return m_ready.load(std::memory_order_relaxed);
+		}
+
 	private:
 		event(const event &) = delete;
 		event & operator = (const event & ) = delete;

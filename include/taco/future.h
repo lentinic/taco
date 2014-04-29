@@ -1,4 +1,4 @@
-/* 
+/*
 Copyright (c) 2013 Chris Lentini
 http://divergentcoder.com
 
@@ -13,56 +13,66 @@ The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS 
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANT*IES OF MERCHANTABILITY, FITNESS 
 FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR 
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER 
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#include <taco/task.h>
-#include <taco/shared_lock.h>
-#include <basis/assert.h>
-#include "scheduler_priv.h"
+#pragma once
+
+#include <functional>
+#include <memory>
+#include <future>
+#include <taco/event.h>
 
 namespace taco
 {
-	/*static*/ task_handle task::run(const std::function<void()> & fn, int threadid)
+	namespace internal
 	{
-		auto t = std::make_shared<task>();
+		template<class TYPE>
+		struct future_data
+		{
+			event 		ready;
+			TYPE 		data;
+		};
+	};
 
-		t->m_state = task_state::scheduled;
+	template<class TYPE>
+	struct future
+	{	
+		TYPE get() const
+		{
+			BASIS_ASSERT(box);
+			box->ready.wait();
+			return box->data;
+		}
+
+		bool ready() const
+		{
+			return box && box->ready;
+		}
+
+		operator TYPE () const
+		{
+			return get();
+		}
+
+		std::shared_ptr<internal::future_data<TYPE>> box;
+	};
+
+	template<class F>
+	auto Start(F f) -> future<decltype(f())>
+	{
+		typedef decltype(f()) type;
+		future<type> r = { std::make_shared<internal::future_data<type>>() };
 
 		Schedule([=]() -> void {
-			{
-				std::unique_lock<taco::shared_mutex> lock(t->m_rwmutex);
-				t->m_state = task_state::running;
-			}
-
-			fn();
-
-			{
-				std::unique_lock<taco::shared_mutex> lock(t->m_rwmutex);
-				t->m_state = task_state::complete;
-			}
-
-			t->m_complete.notify_all();
-		}, threadid);
-
-		return t;
-	}
-
-	void task::sync()
-	{
-		taco::shared_lock<taco::shared_mutex> lock(m_rwmutex);
-		if (m_state != task_state::complete)
-		{
-			m_complete.wait(lock);
-		}
-	}
-
-	task_state task::state() const
-	{
-		return m_state;
+			r.box->data = f();
+			r.box->ready.signal();
+		});
+		
+		return r;
 	}
 }
