@@ -46,7 +46,7 @@ void test_futures()
 	taco::Shutdown();
 }
 
-int main(int argc, char * argv[])
+int main()
 {
 	BASIS_RUN_TESTS();
 	return 0;
