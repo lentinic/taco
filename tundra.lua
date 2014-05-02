@@ -11,10 +11,10 @@ Build {
 			Sources = {
 				"src/scheduler.cpp",
 				"src/windows/fiber_impl.cpp",
-				"src/task.cpp",
 				"src/mutex.cpp",
 				"src/condition.cpp",
-				"src/shared_mutex.cpp"
+				"src/shared_mutex.cpp",
+				"src/event.cpp"
 			}
 		}
 		Program {
@@ -24,6 +24,15 @@ Build {
 			},
 			Sources = {
 				"tests/scheduler.cpp"
+			}
+		}
+		Program {
+			Name = "future",
+			Depends = {
+				"taco"
+			},
+			Sources = {
+				"tests/future.cpp"
 			}
 		}
 		Default "taco"
