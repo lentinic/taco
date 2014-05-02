@@ -75,4 +75,18 @@ namespace taco
 		
 		return r;
 	}
+
+	template<class F, class... ARG_TYPES>
+	auto Start(F f, ARG_TYPES... parameters) -> future<decltype(f(parameters...))>
+	{
+		typedef decltype(f(parameters...)) type;
+		future<type> r = { std::make_shared<internal::future_data<type>>() };
+
+		Schedule([=]() -> void {
+			r.box->data = f(parameters...);
+			r.box->ready.signal();
+		});
+		
+		return r;	
+	}
 }
