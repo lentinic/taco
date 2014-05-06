@@ -35,6 +35,15 @@ Build {
 				"tests/future.cpp"
 			}
 		}
+		Program {
+			Name = "generator",
+			Depends = {
+				"taco"
+			},
+			Sources = {
+				"tests/generator.cpp"
+			}
+		}
 		Default "taco"
 	end,
 	Configs = {

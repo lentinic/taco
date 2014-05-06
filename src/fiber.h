@@ -41,6 +41,7 @@ namespace taco
 		fiber_fn			fn;
 		int 				threadId;
 		scheduler_command	command;
+		void *				data;
 	};
 
 	void 	FiberInitializeThread();

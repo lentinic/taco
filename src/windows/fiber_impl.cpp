@@ -60,6 +60,8 @@ namespace taco
 		ThreadFiber = new fiber;
 		ConvertThreadToFiber(ThreadFiber);
 		ThreadFiber->base.threadId = -1;
+		ThreadFiber->base.command = scheduler_command::none;
+		ThreadFiber->base.data = nullptr;
 		ThreadFiber->handle = GetCurrentFiber();
 		CurrentFiber = ThreadFiber;
 	}
@@ -74,8 +76,10 @@ namespace taco
 	fiber * FiberCreate(const fiber_fn & fn)
 	{
 		fiber * f = new fiber;
-		f->base.threadId = -1;
 		f->base.fn = fn;
+		f->base.threadId = -1;
+		f->base.command = scheduler_command::none;
+		f->base.data = nullptr;
 		f->handle = ::CreateFiber(FIBER_STACK_SZ, &FiberMain, f);
 		return f;
 	}

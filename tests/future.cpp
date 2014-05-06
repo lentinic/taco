@@ -1,4 +1,3 @@
-#include <basis/bitvector.h>
 #include <basis/unit_test.h>
 #include <taco/taco.h>
 #include <algorithm>
@@ -10,12 +9,9 @@ BASIS_TEST_LIST_BEGIN()
 	BASIS_DECLARE_TEST(test_futures)
 BASIS_TEST_LIST_END()
 
-int odd(int);
-int even(int);
-
-int fibonacci(int n)
+unsigned fibonacci(unsigned n)
 {
-	if (n < 2) return n;
+	if (n < 2) return 1;
 
 	auto a = taco::Start(fibonacci, n - 1);
 	auto b = taco::Start(fibonacci, n - 2);
@@ -28,17 +24,19 @@ void test_futures()
 	taco::Initialize();
 
 	taco::Schedule([]() -> void {
-		std::vector<taco::future<int>> results;
-		for (int i=1; i<12; i++)
+		std::vector<taco::future<unsigned>> results;
+		for (unsigned i=0; i<12; i++)
 		{
 			results.push_back(taco::Start(fibonacci, i));
 		}
-		int k = 1;
+
+		std::cout<<"Fibonacci: [ ";
 		for (auto r : results)
 		{
-			std::cout<<"Fibonacci("<<k<<"):\t"<<r<<std::endl;
-			k++;
+			std::cout<<r<<" ";
 		}
+		std::cout<<"]"<<std::endl;
+
 		taco::ExitMain();
 	}, 0);
 

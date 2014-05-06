@@ -234,12 +234,14 @@ namespace taco
 		{
 			Scheduler->privateTaskCount.fetch_sub(1, std::memory_order_relaxed);
 			base->threadId = Scheduler->threadId;
+			base->data = nullptr;
 			todo();
 			return true;
 		}
 		else if (GetSharedTask(todo))
 		{
 			base->threadId = -1;
+			base->data = nullptr;
 			todo();
 			return true;
 		}
@@ -415,6 +417,18 @@ namespace taco
 
 		FiberInvoke(GetNextFiber());
 		FiberSwitchPoint();
+	}
+
+	void SetTaskLocalData(void * data)
+	{
+		fiber_base * f = (fiber_base *) FiberCurrent();
+		f->data = data;
+	}
+
+	void * GetTaskLocalData()
+	{
+		fiber_base * f = (fiber_base *) FiberCurrent();
+		return f->data;
 	}
 
 	void Suspend()

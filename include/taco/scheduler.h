@@ -35,6 +35,8 @@ namespace taco
 	void ExitMain();
 
 	void Schedule(task_fn fn, int threadid = -1);
+	void SetTaskLocalData(void * data);
+	void * GetTaskLocalData();
 	void Switch();
 	
 	uint32_t GetThreadCount();

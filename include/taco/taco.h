@@ -25,6 +25,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "scheduler.h"
 #include "mutex.h"
 #include "shared_mutex.h"
+#include "shared_lock.h"
 #include "condition.h"
 #include "event.h"
 #include "future.h"
+#include "generator.h"
