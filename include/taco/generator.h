@@ -82,7 +82,7 @@ namespace taco
 	template<class TYPE>
 	void YieldValue(TYPE && data)
 	{
-		typedef std::remove_reference<TYPE>::type return_type;
+		typedef typename std::remove_reference<TYPE>::type return_type;
 
 		generator<return_type> * current = (generator<return_type> *)GetTaskLocalData();
 		
@@ -102,7 +102,7 @@ namespace taco
 		typedef decltype(fn()) return_type;
 
 		generator<return_type> r = { std::make_shared<internal::generator_state<return_type>>() };
-		r.state->yieldFnPtr = &YieldValue<return_type>;
+		r.state->yieldFnPtr = (void *)(&YieldValue<return_type>);
 		r.state->complete = false;
 
 		Schedule([=]() mutable {

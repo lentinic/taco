@@ -19,9 +19,11 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#if defined WIN32
+#if defined LINUX
 
-#include <Windows.h>
+#include <ucontext.h>
+#include <setjmp.h>
+
 #include <functional>
 #include <atomic>
 
@@ -31,24 +33,34 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "../fiber.h"
 #include "../config.h"
 
+// using technique detailed at http://www.1024cores.net/home/lock-free-algorithms/tricks/fibers
+
 namespace taco
 {
 	struct fiber
 	{
 		fiber_base					base;
-		void *						handle;
+		ucontext_t					ctx;
+		jmp_buf					jmp;
 	};
 
 	basis_thread_local static fiber * CurrentFiber = nullptr; 
 	basis_thread_local static fiber * PreviousFiber = nullptr;
 	basis_thread_local static fiber * ThreadFiber = nullptr;
 
-	static void __stdcall FiberMain(void * arg)
+	static void FiberMain(void * arg)
 	{
 		fiber * self = (fiber *) arg;
 		BASIS_ASSERT(self != nullptr);
+
+		if (_setjmp(self->jmp) == 0)
+		{
+			swapcontext(&self->ctx, &CurrentFiber->ctx);
+		}
+
 		PreviousFiber = CurrentFiber;
 		CurrentFiber = self;
+
 		self->base.fn();
 	}
 
@@ -57,11 +69,12 @@ namespace taco
 		BASIS_ASSERT(ThreadFiber == nullptr);
 
 		ThreadFiber = new fiber;
-		ConvertThreadToFiber(ThreadFiber);
 		ThreadFiber->base.threadId = -1;
 		ThreadFiber->base.command = scheduler_command::none;
 		ThreadFiber->base.data = nullptr;
-		ThreadFiber->handle = GetCurrentFiber();
+
+		getcontext(&ThreadFiber->ctx);
+
 		CurrentFiber = ThreadFiber;
 	}
 
@@ -79,14 +92,22 @@ namespace taco
 		f->base.threadId = -1;
 		f->base.command = scheduler_command::none;
 		f->base.data = nullptr;
-		f->handle = ::CreateFiber(FIBER_STACK_SIZE, &FiberMain, f);
+
+		getcontext(&f->ctx);
+		f->ctx.uc_stack.ss_sp = new char[FIBER_STACK_SIZE];
+		f->ctx.uc_stack.ss_size = FIBER_STACK_SIZE;
+		f->ctx.uc_link = 0;
+		makecontext(&f->ctx, (void(*)())&FiberMain, 1, f);
+		
+		swapcontext(&CurrentFiber->ctx, &f->ctx);
+
 		return f;
 	}
 
 	void FiberDestroy(fiber * f)
 	{
 		BASIS_ASSERT(CurrentFiber != f);
-		::DeleteFiber(f->handle);
+		delete [] (char *)f->ctx.uc_stack.ss_sp;
 		delete f;
 	}
 
@@ -95,7 +116,12 @@ namespace taco
 		BASIS_ASSERT(f != nullptr);
 		BASIS_ASSERT(f != CurrentFiber);
 		fiber * old = CurrentFiber;
-		SwitchToFiber(f->handle);
+		
+		if (_setjmp(old->jmp) == 0)
+		{
+			_longjmp(f->jmp, 1);
+		}
+
 		PreviousFiber = CurrentFiber;
 		CurrentFiber = old;
 	}

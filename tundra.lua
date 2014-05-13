@@ -11,6 +11,7 @@ Build {
 			Sources = {
 				"src/scheduler.cpp",
 				"src/windows/fiber_impl.cpp",
+				"src/linux/fiber_impl.cpp",
 				"src/mutex.cpp",
 				"src/condition.cpp",
 				"src/shared_mutex.cpp",
@@ -76,6 +77,22 @@ Build {
 					"/analyze",
 				}
 			}
+		},
+		{
+			Name = "linux-gcc",
+			DefaultOnHost =  "linux" ,
+			Tools = { { "gcc", TargetArch = "x64" } },
+			Env = {
+				CPPDEFS = { "LINUX" },
+				CXXOPTS = { 
+					"-std=c++11", 
+					{ "-g", Config = "*-*-debug"  },
+				},
+				PROGOPTS = { "-pthread" }
+			},
+			ReplaceEnv = {
+				LD = { "$(CXX)" ; Config = { "*-gcc-*" } },
+			},
 		},
 	},
 
