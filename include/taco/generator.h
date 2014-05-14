@@ -36,7 +36,6 @@ namespace taco
 			event 		evtWrite;
 			event 		evtRead;
 			TYPE 		data;
-			void *		yieldFnPtr;
 			bool		complete;
 		};
 	};
@@ -85,9 +84,6 @@ namespace taco
 		typedef typename std::remove_reference<TYPE>::type return_type;
 
 		generator<return_type> * current = (generator<return_type> *)GetTaskLocalData();
-		
-		// Basic runtime sanity check
-		BASIS_ASSERT(current->state->yieldFnPtr == &YieldValue<return_type>);
 
 		current->state->data = std::forward<TYPE>(data);
 		current->state->evtWrite.signal();
@@ -102,7 +98,6 @@ namespace taco
 		typedef decltype(fn()) return_type;
 
 		generator<return_type> r = { std::make_shared<internal::generator_state<return_type>>() };
-		r.state->yieldFnPtr = (void *)(&YieldValue<return_type>);
 		r.state->complete = false;
 
 		Schedule([=]() mutable {
