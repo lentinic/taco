@@ -19,7 +19,7 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#if defined LINUX
+#if defined(BASIS_PlATFORM_LINUX)
 
 #include <ucontext.h>
 #include <setjmp.h>
@@ -28,7 +28,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <atomic>
 
 #include <basis/assert.h>
-#include <basis/thread_local.h>
+#include <basis/thread_util.h>
 
 #include "../fiber.h"
 #include "../config.h"

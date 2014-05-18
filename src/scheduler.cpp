@@ -22,7 +22,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <utility>
 
 #include <basis/assert.h>
-#include <basis/thread_local.h>
 #include <basis/thread_util.h>
 #include <basis/chunk_queue.h>
 

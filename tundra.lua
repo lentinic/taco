@@ -53,7 +53,7 @@ Build {
 			DefaultOnHost = "windows",
 			Tools = { { "msvc", TargetArch = "x64" } },
 			Env = {
-				CPPDEFS = { "WIN32" },
+				CPPDEFS = { "BASIS_PLATFORM_WINDOWS" },
 				CXXOPTS = { 
 					"/W4", 
 					"/EHsc",
@@ -68,7 +68,7 @@ Build {
 			SupportedHosts = { "windows" },
 			Tools = { { "msvc", TargetArch = "x64" } },
 			Env = {
-				CPPDEFS = { "WIN32" },
+				CPPDEFS = { "BASIS_PLATFORM_WINDOWS" },
 				CXXOPTS = { 
 					"/W4", 
 					"/EHsc",
@@ -83,7 +83,7 @@ Build {
 			DefaultOnHost =  "linux" ,
 			Tools = { { "gcc", TargetArch = "x64" } },
 			Env = {
-				CPPDEFS = { "LINUX" },
+				CPPDEFS = { "BASIS_PLATFORM_LINUX" },
 				CXXOPTS = { 
 					"-std=c++11", 
 					{ "-g", Config = "*-*-debug"  },
