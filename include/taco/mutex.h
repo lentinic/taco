@@ -32,6 +32,7 @@ namespace taco
 		mutex();
 
 		bool try_lock();
+		bool try_lock_weak();
 		void lock();
 		void unlock();
 

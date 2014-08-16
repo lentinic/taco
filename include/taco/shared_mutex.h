@@ -36,6 +36,7 @@ namespace taco
 		void unlock_shared();
 
 		bool try_lock();
+		bool try_lock_weak();
 		void lock();
 		void unlock();
 

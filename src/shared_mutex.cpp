@@ -25,6 +25,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <taco/scheduler.h>
 #include <taco/shared_mutex.h>
 #include "scheduler_priv.h"
+#include "profiler_priv.h"
 #include "config.h"
 
 #define EXCLUSIVE 0x80000000
@@ -37,6 +38,10 @@ namespace taco
 
 	bool shared_mutex::try_lock_shared()
 	{
+		BASIS_ASSERT(IsSchedulerThread());
+		
+		TACO_PROFILER_SCOPE("shared_mutex::try_lock_shared");
+
 		uint32_t state = m_state.fetch_add(1);
 		if (!!(state & EXCLUSIVE))
 		{
@@ -48,6 +53,9 @@ namespace taco
 	
 	void shared_mutex::lock_shared()
 	{
+		BASIS_ASSERT(IsSchedulerThread());
+
+		TACO_PROFILER_SCOPE("shared_mutex::lock_shared");
 		unsigned counter = 0;
 		while (!try_lock_shared())
 		{
@@ -66,18 +74,38 @@ namespace taco
 
 	void shared_mutex::unlock_shared()
 	{
+		BASIS_ASSERT(IsSchedulerThread());
+
+		TACO_PROFILER_SCOPE("shared_mutex::unlock_shared");
 		uint32_t state = m_state.fetch_sub(1);
+
 		BASIS_ASSERT((state & (~EXCLUSIVE)) != 0);
 	}
 
 	bool shared_mutex::try_lock()
 	{
+		BASIS_ASSERT(IsSchedulerThread());
+
+		TACO_PROFILER_SCOPE("shared_mutex::try_lock");
 		uint32_t expected = 0;
 		return m_state.compare_exchange_strong(expected, EXCLUSIVE);
 	}
 
+	bool shared_mutex::try_lock_weak()
+	{
+		BASIS_ASSERT(IsSchedulerThread());
+
+		TACO_PROFILER_SCOPE("shared_mutex::try_lock");
+		uint32_t expected = 0;
+		return m_state.compare_exchange_weak(expected, EXCLUSIVE);	
+	}
+
 	void shared_mutex::lock()
 	{
+		BASIS_ASSERT(IsSchedulerThread());
+
+		TACO_PROFILER_SCOPE("shared_mutex::lock");
+
 		// Try to acquire the lock, but if we can't try and prevent further shared locks
 		uint32_t state = m_state.fetch_or(EXCLUSIVE);
 		unsigned counter = 0;
@@ -122,6 +150,9 @@ namespace taco
 
 	void shared_mutex::unlock()
 	{
+		BASIS_ASSERT(IsSchedulerThread());
+
+		TACO_PROFILER_SCOPE("shared_mutex::unlock");
 		uint32_t state = m_state.fetch_and(~EXCLUSIVE);
 		BASIS_ASSERT(!!(state & EXCLUSIVE));
 	}

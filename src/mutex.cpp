@@ -25,6 +25,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <taco/scheduler.h>
 #include <taco/mutex.h>
 #include "scheduler_priv.h"
+#include "profiler_priv.h"
 #include "config.h"
 
 namespace taco
@@ -35,16 +36,29 @@ namespace taco
 
 	bool mutex::try_lock()
 	{
+		TACO_PROFILER_SCOPE("mutex::try_lock");
 		BASIS_ASSERT(IsSchedulerThread());
 
 		uint32_t expected = INVALID_SCHEDULER_ID;
 		return m_locked.compare_exchange_strong(expected, GetSchedulerId());
 	}
+
+	bool mutex::try_lock_weak()
+	{
+		TACO_PROFILER_SCOPE("mutex::try_lock_weak");
+		BASIS_ASSERT(IsSchedulerThread());
+
+		uint32_t expected = INVALID_SCHEDULER_ID;
+		return m_locked.compare_exchange_weak(expected, GetSchedulerId());
+	}
 	
 	void mutex::lock()
 	{
+		TACO_PROFILER_SCOPE("mutex::lock");
+		BASIS_ASSERT(IsSchedulerThread());
+
 		int count = 0;
-		while (!try_lock())
+		while (!try_lock_weak())
 		{
 			count++;
 			if (count == MUTEX_SPIN_COUNT)
@@ -61,6 +75,7 @@ namespace taco
 
 	void mutex::unlock()
 	{
+		TACO_PROFILER_SCOPE("mutex::unlock");
 		BASIS_ASSERT(IsSchedulerThread());
 
 		uint32_t expected = GetSchedulerId();
