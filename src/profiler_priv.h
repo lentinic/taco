@@ -23,68 +23,27 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #pragma once
 
 #include <basis/signal.h>
+#include <taco/profiler.h>
 
 namespace taco
 {
-	void ProfilerEmit(profiler_object object, profiler_action action);
+	namespace profiler
+	{
+		void Emit(event_object object, event_action action, const char * name);
+	}
 }
 
-/*
-	// Thread view
-	[thread 0
-		[fiber A
-			task
-			task
-			task
-				switch - out]
-		[fiber B
-			task
-			task
-			task
-				switch - out]
-		[fiber A
-				switch - in
-			task
-			task
-				switch - out]
-		[fiber C
-			task
-				switch - out]
-		[fiber B
-				switch - in
-			task
-			task
-			...]
-		...]
-	
-	// fiber view
-	[fiber A
-		task
-		task
-		task
-			switch - out
-			sleeping
-			switch - in
-			working
-			switch - out
-			sleeping
-			switch - in
-		task
-		task
-		...]
+#if defined(TACO_PROFILER_ENABLED)
+#define TACO_PROFILER_EMIT_FULL(object, action, name) taco::profiler::Emit(object, action, name)
+#define TACO_PROFILER_EMIT_NONAME(object, action) taco::profiler::Emit(object, action, "")
+#define TACO_PROFILER_EMIT_ACTION(action) taco::profiler::Emit(taco::profiler::event_object::none, action, "")
+#else
+#define TACO_PROFILER_EMIT_FULL(object, action, name)
+#define TACO_PROFILER_EMIT_NONAME(object, action)
+#define TACO_PROFILER_EMIT_ACTION(action)
+#endif
 
-	// task view
-	[task "foobar"
-		<enter>
-		doSomething()
-		doSomething()
-		wait on condition
-		sleeping
-		condition triggered
-		doSomething()
-			switch - out
-			sleeping
-			switch - in
-		doSomething()
-		<complete>]
-*/
+#define TACO_PROFILER_SELECTOR(tuple) TACO_PROFILER_SELECTOR_IMPL tuple
+#define TACO_PROFILER_SELECTOR_IMPL(_1,_2,_3,N,...) N
+#define TACO_PROFILER_EMIT(...) \
+	TACO_PROFILER_SELECTOR((__VA_ARGS__,TACO_PROFILER_EMIT_FULL,TACO_PROFILER_EMIT_NONAME,TACO_PROFILER_EMIT_ACTION))(__VA_ARGS__)

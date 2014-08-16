@@ -19,53 +19,47 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
+#include <mutex>
 #include <basis/shared_mutex.h>
 #include <taco/profiler.h>
 #include "profiler_priv.h"
 
 namespace taco
 {
-	std::mutex ProfilerMutex;
-	basis::signal<void(profiler_event)> ProfilerSignal;
-
-	void ProfilerEmit(profiler_object object, profiler_action action)
+	namespace profiler
 	{
-#if defined(TACO_PROFILER_ENABLED)
-		ProfilerMutex.shared_lock();
-		ProfilerSignal(object,action,nullptr,basis::GetTimestamp());
-		ProfilerMutex.shared_unlock();
-#endif
-	}
+		basis::shared_mutex SignalMutex;
+		basis::signal<void(event)> EventSignal;
 
-	basis::handle32 InstallProfiler(profiler_function fn)
-	{
-		std::exclusive_lock<std::mutex> lock(ProfilerMutex);
-		return ProfilerSignal.connect(fn);
-	}
+		void Emit(event_object object, event_action action, const char * name)
+		{
+			SignalMutex.lock_shared();
+			EventSignal({ object, action, basis::GetTimestamp(), name });
+			SignalMutex.unlock_shared();
+		}
 
-	void UninstallProfiler(basis::handle32 id)
-	{
-		std::exclusive_lock<std::mutex> lock(ProfilerMutex);
-		ProfilerSignal.disconnect(id);
-	}
+		basis::handle32 InstallListener(listener_fn fn)
+		{
+			std::unique_lock<basis::shared_mutex> lock(SignalMutex);
+			return EventSignal.connect(fn);
+		}
 
-#if defined(TACO_PROFILER_ENABLED)
-	ProfilerScope::ProfilerScope(const char * name)
-		:	m_scopeName(name)
-	{
-		ProfilerMutex.shared_lock();
-		ProfilerSignal(profiler_object::user, profiler_action::start, name, basis::GetTimestamp());
-		ProfilerMutex.shared_unlock();
-	}
+		void UninstallListener(basis::handle32 id)
+		{
+			std::unique_lock<basis::shared_mutex> lock(SignalMutex);
+			EventSignal.disconnect(id);
+		}
 
-	ProfilerScope::~ProfilerScope()
-	{
-		ProfilerMutex.shared_lock();
-		ProfilerSignal(profiler_object::user, profiler_action::complete, m_scopeName, basis::GetTimestamp());
-		ProfilerMutex.shared_unlock();
+		scope::scope(const char * name)
+			: 	m_name(name)
+		{
+			Emit(event_object::scope, event_action::start, name);
+		}
+
+		scope::~scope()
+		{
+			Emit(event_object::scope, event_action::complete, m_name);
+		}
+
 	}
-#else
-	ProfilerScope::ProfilerScope(const char * name) {}
-	ProfilerScope::~ProfilerScope() {}
-#endif
 }

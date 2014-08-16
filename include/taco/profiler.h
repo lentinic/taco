@@ -27,47 +27,56 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 namespace taco
 {
-	enum class profiler_object
+	namespace profiler
 	{
-		thread,
-		fiber,
-		task,
-		user
-	};
+		enum class event_object
+		{
+			none,
+			thread,
+			fiber,
+			task,
+			scope
+		};
 
-	enum class profiler_action
-	{
-		start,
-		yield,
-		suspend,
-		resume,
-		complete
-	};
+		enum class event_action
+		{
+			schedule,
+			start,
+			suspend,
+			resume,
+			complete
+		};
 
-	struct profiler_event
-	{
-		profiler_object	object;
-		profiler_action	action;
-		uint64_t 		id;
-		const char *	name;
-		basis::time_t	timestamp;
-	};
+		struct event
+		{
+			event_object	object;
+			event_action	action;
+			basis::tick_t	timestamp;
+			const char *	name;
+		};
 
-	typedef std::function<void(profiler_event)> profiler_function;
+		typedef std::function<void(event)> listener_fn;
 
-	basis::handle32 InstallProfiler(profiler_function fn);
-	void UninstallProfiler(basis::handle32 id);
+		basis::handle32 InstallListener(listener_fn fn);
+		void UninstallListener(basis::handle32 id);
 
-	class ProfilerScope
-	{
-	public:
-		explicit ProfilerScope(const char * name);
-		~ProfilerScope();
+		class scope
+		{
+		public:
+			scope(const char * name);
+			~scope();
 
-	private:
-		ProfilerScope(const ProfilerScope &) = delete;
-		ProfilerScope & operator = (const ProfilerScope &) = delete;
+		private:
+			scope(const scope &) = delete;
+			scope & operator = (const scope &) = delete;
 
-		const char * m_scopeName;
-	};
+			const char * m_name;
+		};
+	}
 }
+
+#if defined(TACO_PROFILER_ENABLED)
+#define TACO_PROFILER_SCOPE(name) taco::profiler::scope BASIS_CONCAT(tmp_scope, __LINE__)(name)
+#else
+#define TACO_PROFILER_SCOPE(name)
+#endif
