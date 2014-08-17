@@ -93,14 +93,14 @@ namespace taco
 	}
 
 	template<class F>
-	auto StartGenerator(F fn) -> generator<decltype(fn())>
+	auto StartGenerator(const char * name, F fn) -> generator<decltype(fn())>
 	{
 		typedef decltype(fn()) return_type;
 
 		generator<return_type> r = { std::make_shared<internal::generator_state<return_type>>() };
 		r.state->complete = false;
 
-		Schedule([=]() mutable {
+		Schedule(name, [=]() mutable {
 			SetTaskLocalData(&r);
 			r.state->data = fn();
 			r.state->complete = true;
@@ -108,5 +108,11 @@ namespace taco
 		});
 
 		return r;
+	}
+
+	template<class F>
+	auto StartGenerator(F fn) -> generator<decltype(fn())>
+	{
+		return StartGenerator(nullptr, fn);
 	}
 }
