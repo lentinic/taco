@@ -15,7 +15,9 @@ Build {
 				"src/mutex.cpp",
 				"src/condition.cpp",
 				"src/shared_mutex.cpp",
-				"src/event.cpp"
+				"src/event.cpp",
+				"src/profiler.cpp",
+				"src/json_profiler.cpp"
 			}
 		}
 		Program {
@@ -53,7 +55,7 @@ Build {
 			DefaultOnHost = "windows",
 			Tools = { { "msvc", TargetArch = "x64" } },
 			Env = {
-				CPPDEFS = { "BASIS_PLATFORM_WINDOWS" },
+				CPPDEFS = { "BASIS_PLATFORM_WINDOWS", "TACO_PROFILER_ENABLED" },
 				CXXOPTS = { 
 					"/W4", 
 					"/EHsc",
