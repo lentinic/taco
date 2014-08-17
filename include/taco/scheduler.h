@@ -34,9 +34,12 @@ namespace taco
 	void EnterMain();
 	void ExitMain();
 
-	void Schedule(task_fn fn, int threadid = -1);
+	void Schedule(task_fn fn, unsigned threadid, const char * name = "");
+	void Schedule(task_fn fn, const char * name = "");
+
 	void SetTaskLocalData(void * data);
 	void * GetTaskLocalData();
+	const char * GetTaskName();
 	void Switch();
 	
 	uint32_t GetThreadCount();

@@ -1,4 +1,4 @@
-	/*
+/*
 Copyright (c) 2013 Chris Lentini
 http://divergentcoder.com
 
@@ -24,15 +24,31 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <basis/assert.h>
 #include <basis/thread_util.h>
 #include <basis/chunk_queue.h>
+#include <basis/string.h>
 
 #include "scheduler_priv.h"
 #include "config.h"
 #include "fiber.h"
+#include "profiler_priv.h"
 
 namespace taco
 {
-	typedef basis::chunk_queue<task_fn,basis::queue_access_policy::spmc> shared_task_queue_t;
-	typedef basis::chunk_queue<task_fn,basis::queue_access_policy::mpsc> private_task_queue_t;
+	struct task_entry
+	{
+		task_fn			fn;
+		basis::string	name;
+
+		void operator () ()
+		{
+			TACO_PROFILER_EMIT(profiler::event_object::task, profiler::event_action::start, name);
+			fn();
+			TACO_PROFILER_EMIT(profiler::event_object::task, profiler::event_action::complete, name);
+		}
+	};
+
+	typedef basis::chunk_queue<task_entry,basis::queue_access_policy::spmc> shared_task_queue_t;
+	typedef basis::chunk_queue<task_entry,basis::queue_access_policy::mpsc> private_task_queue_t;
+
 	typedef basis::chunk_queue<fiber *,basis::queue_access_policy::spmc> shared_fiber_queue_t;
 	typedef basis::chunk_queue<fiber *,basis::queue_access_policy::mpsc> private_fiber_queue_t;
 
@@ -80,12 +96,12 @@ namespace taco
 		return (shared_count > 0) || (private_count > 0);
 	}
 
-	static bool GetPrivateTask(task_fn & out)
+	static bool GetPrivateTask(task_entry & out)
 	{
 		return Scheduler->privateTasks.pop_front(out);
 	}
 
-	static bool GetSharedTask(task_fn & out)
+	static bool GetSharedTask(task_entry & out)
 	{
 		uint32_t start = Scheduler->threadId;
 		uint32_t id = start;
@@ -113,6 +129,8 @@ namespace taco
 
 	static void AskForHelp(size_t count)
 	{
+		TACO_PROFILER_SCOPE("AskForHelp");
+
 		uint32_t start = Scheduler->threadId;
 		uint32_t id = (start + 1) < ThreadCount ? (start + 1) : 0;
 		while (count > 0 && id != start)
@@ -193,6 +211,7 @@ namespace taco
 		if (Scheduler->exitRequested)
 		{
 			Scheduler->inactive.push_back(FiberCurrent());
+			TACO_PROFILER_EMIT(taco::profiler::event_object::fiber, taco::profiler::event_action::complete);
 			FiberInvoke(FiberRoot());
 			BASIS_ASSERT_FAILED;
 		}
@@ -224,25 +243,41 @@ namespace taco
 		}
 	}
 
+	static void FiberSwitch(fiber * to)
+	{
+		TACO_PROFILER_EMIT(profiler::event_object::fiber, profiler::event_action::suspend);
+		FiberInvoke(to);
+		FiberSwitchPoint();
+		TACO_PROFILER_EMIT(profiler::event_object::fiber, profiler::event_action::resume);
+	}
+
 	static bool WorkerIteration()
 	{
 		fiber * self = FiberCurrent();
 		fiber_base * base = (fiber_base *) self;
 
-		task_fn todo;
+		task_entry todo;
 		if (GetPrivateTask(todo))
 		{
 			Scheduler->privateTaskCount.fetch_sub(1, std::memory_order_relaxed);
 			base->threadId = Scheduler->threadId;
 			base->data = nullptr;
+			base->name = todo.name;
 			todo();
+			base->name = "";
+			basis::strfree(base->name);
+
 			return true;
 		}
 		else if (GetSharedTask(todo))
 		{
 			base->threadId = -1;
 			base->data = nullptr;
+			base->name = todo.name;
 			todo();
+			base->name = "";
+			basis::strfree(base->name);
+
 			return true;
 		}
 		else
@@ -252,8 +287,7 @@ namespace taco
 			{
 				Scheduler->inactive.push_back(self);
 				base->command = scheduler_command::none;
-				FiberInvoke(next);
-				FiberSwitchPoint();
+				FiberSwitch(next);
 				return true;
 			}
 		}
@@ -262,6 +296,7 @@ namespace taco
 
 	static void WorkerLoop()
 	{
+		TACO_PROFILER_EMIT(profiler::event_object::fiber, profiler::event_action::start);
 		FiberSwitchPoint();
 		for(;;)
 		{
@@ -272,7 +307,9 @@ namespace taco
 				std::unique_lock<std::mutex> lock(Scheduler->wakeMutex);
 				if (!Scheduler->isSignaled)
 				{
+					TACO_PROFILER_EMIT(profiler::event_object::thread, profiler::event_action::suspend);
 					Scheduler->wakeCondition.wait(lock);
+					TACO_PROFILER_EMIT(profiler::event_object::thread, profiler::event_action::resume);
 				}
 				Scheduler->isSignaled = false;
 			}
@@ -322,14 +359,18 @@ namespace taco
 		for (unsigned i=1; i<ThreadCount; i++)
 		{
 			SchedulerList[i].thread = std::thread([=]() -> void {
-				FiberInitializeThread();
 				Scheduler = SchedulerList + i;
 
+				TACO_PROFILER_EMIT(profiler::event_object::thread, profiler::event_action::start);
+
+				FiberInitializeThread();
 				fiber * f = FiberCreate(&WorkerLoop);
 
 				Scheduler->isActive = true;
 				FiberInvoke(f);
 				Scheduler->isActive = false;
+
+				TACO_PROFILER_EMIT(profiler::event_object::thread, profiler::event_action::complete);
 
 				ShutdownScheduler();
 				FiberShutdownThread();
@@ -373,9 +414,14 @@ namespace taco
 
 		fiber * f = FiberCreate(&WorkerLoop);
 
+		TACO_PROFILER_EMIT(profiler::event_object::thread, profiler::event_action::start);
+
 		Scheduler->isActive = true;
 		FiberInvoke(f);
 		Scheduler->isActive = false;
+
+		TACO_PROFILER_EMIT(profiler::event_object::thread, profiler::event_action::complete);
+
 		Scheduler->exitRequested = false;
 	}
 
@@ -385,28 +431,30 @@ namespace taco
 		SignalScheduler(SchedulerList);
 	}
 
-	void Schedule(task_fn t, int threadid)
+	void Schedule(task_fn t, unsigned threadid, const char * name)
 	{
-		if (threadid >= 0 && (unsigned)threadid < ThreadCount)
+		BASIS_ASSERT(Scheduler != nullptr);
+		BASIS_ASSERT(threadid >=0 && threadid < ThreadCount);
+
+		scheduler_data * s = SchedulerList + threadid;
+		s->privateTasks.push_back<task_entry>({ t, basis::stralloc(name) });
+		s->privateTaskCount.fetch_add(1, std::memory_order_relaxed);
+
+		if (s != Scheduler)
 		{
-			BASIS_ASSERT(SchedulerList != nullptr);
-			scheduler_data * s = SchedulerList + threadid;
-			s->privateTasks.push_back(t);
-			s->privateTaskCount.fetch_add(1, std::memory_order_relaxed);
-			if (s != Scheduler)
-			{
-				SignalScheduler(s);
-			}
+			SignalScheduler(s);
 		}
-		else
+	}
+
+	void Schedule(task_fn t, const char * name)
+	{
+		BASIS_ASSERT(Scheduler != nullptr);
+
+		Scheduler->sharedTasks.push_back<task_entry>({ t, basis::stralloc(name) });
+		uint32_t count = GlobalSharedTaskCount.fetch_add(1, std::memory_order_relaxed) + 1;
+		if (count > 1 || !Scheduler->isActive)
 		{
-			BASIS_ASSERT(Scheduler != nullptr);
-			Scheduler->sharedTasks.push_back(t);
-			uint32_t count = GlobalSharedTaskCount.fetch_add(1, std::memory_order_relaxed) + 1;
-			if (count > 1 || !Scheduler->isActive)
-			{
-				AskForHelp(count);
-			}
+			AskForHelp(count);
 		}
 	}
 
@@ -415,8 +463,7 @@ namespace taco
 		fiber_base * f = (fiber_base *) FiberCurrent();
 		f->command = scheduler_command::reschedule;
 
-		FiberInvoke(GetNextFiber());
-		FiberSwitchPoint();
+		FiberSwitch(GetNextFiber());
 	}
 
 	void SetTaskLocalData(void * data)
@@ -431,25 +478,25 @@ namespace taco
 		return f->data;
 	}
 
+	const char * GetTaskName()
+	{
+		fiber_base  * f = (fiber_base *) FiberCurrent();
+		return f->name;
+	}
+
 	void Suspend()
 	{
 		fiber_base * f = (fiber_base *) FiberCurrent();
 		f->command = scheduler_command::none;
-
-		FiberInvoke(GetNextFiber());
-		FiberSwitchPoint();
+		FiberSwitch(GetNextFiber());
 	}
 
 	void Suspend(std::function<void()> on_suspend)
 	{
 		fiber_base * f = (fiber_base *) FiberCurrent();
 		f->command = scheduler_command::none;
-
-		// potentially unsafe - depends on what happens to this fiber's stack
 		Scheduler->onSuspend = &on_suspend;
-		
-		FiberInvoke(GetNextFiber());
-		FiberSwitchPoint();
+		FiberSwitch(GetNextFiber());
 	}
 	
 	void Resume(fiber * f)
