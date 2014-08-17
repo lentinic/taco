@@ -265,7 +265,7 @@ namespace taco
 			base->name = todo.name;
 			todo();
 			base->name = "";
-			basis::strfree(base->name);
+			basis::strfree(todo.name);
 
 			return true;
 		}
@@ -276,7 +276,7 @@ namespace taco
 			base->name = todo.name;
 			todo();
 			base->name = "";
-			basis::strfree(base->name);
+			basis::strfree(todo.name);
 
 			return true;
 		}
