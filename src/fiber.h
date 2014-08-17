@@ -40,15 +40,16 @@ namespace taco
 	{
 		fiber_fn			fn;
 		int 				threadId;
-		scheduler_command	command;
+		scheduler_command 	command;
 		void *				data;
+		const char *		name;
 	};
 
-	void 	FiberInitializeThread();
-	void	FiberShutdownThread();
+	void    FiberInitializeThread();
+	void    FiberShutdownThread();
 	fiber * FiberCreate(const fiber_fn & fn);
-	void 	FiberDestroy(fiber * f);
-	void 	FiberInvoke(fiber * f);
+	void    FiberDestroy(fiber * f);
+	void    FiberInvoke(fiber * f);
 	fiber * FiberCurrent();
 	fiber * FiberPrevious();
 	fiber * FiberRoot();
