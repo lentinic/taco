@@ -26,6 +26,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <taco/scheduler.h>
 #include "fiber.h"
 #include "scheduler_priv.h"
+#include "profiler_priv.h"
 
 namespace taco
 {
@@ -44,6 +45,8 @@ namespace taco
 
 	void condition::_wait(std::function<void()> on_suspend)
 	{
+		TACO_PROFILER_SCOPE("condition::wait");
+
 		fiber * cur = FiberCurrent();
 		BASIS_ASSERT(cur);
 
@@ -56,6 +59,8 @@ namespace taco
 
 	void condition::notify_one()
 	{
+		TACO_PROFILER_SCOPE("condition::notify_one");
+
 		std::unique_lock<mutex> lock(m_mutex);
 		fiber * f = m_waiting.front();
 		m_waiting.pop_front();
@@ -64,6 +69,8 @@ namespace taco
 
 	void condition::notify_all()
 	{
+		TACO_PROFILER_SCOPE("condition::notify_all");
+		
 		std::unique_lock<mutex> lock(m_mutex);
 		while (!m_waiting.empty())
 		{
