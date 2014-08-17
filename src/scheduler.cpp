@@ -431,7 +431,7 @@ namespace taco
 		SignalScheduler(SchedulerList);
 	}
 
-	void Schedule(task_fn t, unsigned threadid, const char * name)
+	void Schedule(const char * name, task_fn t, unsigned threadid)
 	{
 		BASIS_ASSERT(Scheduler != nullptr);
 		BASIS_ASSERT(threadid >=0 && threadid < ThreadCount);
@@ -446,7 +446,7 @@ namespace taco
 		}
 	}
 
-	void Schedule(task_fn t, const char * name)
+	void Schedule(const char * name, task_fn t)
 	{
 		BASIS_ASSERT(Scheduler != nullptr);
 

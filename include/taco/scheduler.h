@@ -34,8 +34,18 @@ namespace taco
 	void EnterMain();
 	void ExitMain();
 
-	void Schedule(task_fn fn, unsigned threadid, const char * name = "");
-	void Schedule(task_fn fn, const char * name = "");
+	void Schedule(const char * name, task_fn fn, unsigned threadid);
+	void Schedule(const char * name, task_fn fn);
+
+	inline void Schedule(task_fn fn, unsigned threadid)
+	{
+		Schedule(NULL, fn, threadid);
+	}
+
+	inline void Schedule(task_fn fn)
+	{
+		Schedule(NULL, fn);
+	}
 
 	void SetTaskLocalData(void * data);
 	void * GetTaskLocalData();
