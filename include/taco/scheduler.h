@@ -25,26 +25,29 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <functional>
 #include <stdint.h>
 
+#define TACO_INVALID_THREAD_ID 0xffffffff
+
 namespace taco
 {
 	typedef std::function<void()> task_fn;
 
 	void Initialize(int nthreads = -1);
+	void Initialize(const char * name, task_fn comain, int nthreads = -1);
+
+	inline void Initialize(task_fn comain, int nthreads = -1)
+	{
+		Initialize("CoMain", comain, nthreads);
+	}
+
 	void Shutdown();
 	void EnterMain();
 	void ExitMain();
 
-	void Schedule(const char * name, task_fn fn, unsigned threadid);
-	void Schedule(const char * name, task_fn fn);
+	void Schedule(const char * name, task_fn fn, uint32_t threadid = TACO_INVALID_THREAD_ID);
 
-	inline void Schedule(task_fn fn, unsigned threadid)
+	inline void Schedule(task_fn fn, uint32_t threadid = TACO_INVALID_THREAD_ID)
 	{
-		Schedule(NULL, fn, threadid);
-	}
-
-	inline void Schedule(task_fn fn)
-	{
-		Schedule(NULL, fn);
+		Schedule(nullptr, fn, threadid);
 	}
 
 	void SetTaskLocalData(void * data);

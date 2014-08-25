@@ -381,6 +381,16 @@ namespace taco
 		FiberInitializeThread();
 	}
 
+	void Initialize(const char * name, task_fn comain, int nthreads)
+	{
+		Initialize(nthreads);
+		Schedule(name, [&]() -> void {
+			comain();
+			ExitMain();
+		}, 0);
+		EnterMain();
+	}
+
 	void Shutdown()
 	{
 		// Must be called from main thread and main thread must not
@@ -431,30 +441,31 @@ namespace taco
 		SignalScheduler(SchedulerList);
 	}
 
-	void Schedule(const char * name, task_fn t, unsigned threadid)
+	void Schedule(const char * name, task_fn fn, uint32_t threadid)
 	{
 		BASIS_ASSERT(Scheduler != nullptr);
-		BASIS_ASSERT(threadid >=0 && threadid < ThreadCount);
-
-		scheduler_data * s = SchedulerList + threadid;
-		s->privateTasks.push_back<task_entry>({ t, basis::stralloc(name) });
-		s->privateTaskCount.fetch_add(1, std::memory_order_relaxed);
-
-		if (s != Scheduler)
+		
+		if (threadid >=0 && threadid < ThreadCount)
 		{
-			SignalScheduler(s);
+			scheduler_data * s = SchedulerList + threadid;
+			s->privateTasks.push_back<task_entry>({ fn, basis::stralloc(name) });
+			s->privateTaskCount.fetch_add(1, std::memory_order_relaxed);
+
+			if (s != Scheduler)
+			{
+				SignalScheduler(s);
+			}
 		}
-	}
-
-	void Schedule(const char * name, task_fn t)
-	{
-		BASIS_ASSERT(Scheduler != nullptr);
-
-		Scheduler->sharedTasks.push_back<task_entry>({ t, basis::stralloc(name) });
-		uint32_t count = GlobalSharedTaskCount.fetch_add(1, std::memory_order_relaxed) + 1;
-		if (count > 1 || !Scheduler->isActive)
+		else
 		{
-			AskForHelp(count);
+			BASIS_ASSERT(threadid == TACO_INVALID_THREAD_ID);
+			
+			Scheduler->sharedTasks.push_back<task_entry>({ fn, basis::stralloc(name) });
+			uint32_t count = GlobalSharedTaskCount.fetch_add(1, std::memory_order_relaxed) + 1;
+			if (count > 1 || !Scheduler->isActive)
+			{
+				AskForHelp(count);
+			}
 		}
 	}
 

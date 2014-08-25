@@ -7,11 +7,13 @@
 #define TEST_TIMEOUT_MS 2000
 
 void test_initialize_shutdown();
+void test_basic();
 void test_schedule();
 void test_switch();
 
 BASIS_TEST_LIST_BEGIN()
 	BASIS_DECLARE_TEST(test_initialize_shutdown)
+	BASIS_DECLARE_TEST(test_basic)
 	BASIS_DECLARE_TEST(test_schedule)
 	BASIS_DECLARE_TEST(test_switch)
 BASIS_TEST_LIST_END()
@@ -19,6 +21,20 @@ BASIS_TEST_LIST_END()
 void test_initialize_shutdown()
 {
 	taco::Initialize();
+	taco::Shutdown();
+}
+
+void test_basic()
+{
+	taco::Initialize([]() -> void {
+		int n = 0;
+		auto task = taco::Start([&]() -> void {
+			n = 1;
+		});
+		task.await();
+		BASIS_TEST_VERIFY_MSG(n == 1, "Expected set value to be 1; set value is %d", n);
+
+	});
 	taco::Shutdown();
 }
 
