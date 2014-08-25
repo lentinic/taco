@@ -1,12 +1,14 @@
 #taco - task coroutines
 
-taco is a C++ multithreaded task processing library built around coroutines. This means that each task is fully capable of suspending itself and then being resumed in the future - with its execution state fully intact from where it left off. This resumption can either be unconditional or dependent on some event. The library provides implementations for a couple synchronization primitives built around this functionality, allowing tasks to, for example, acquire a mutex without any danger of the task locking the thread it is executing on. If the mutex is currently held by some other task, then the acquiring task will simply suspend itself, allowing some other task to execute; when the mutex is released it will take up the suspended task, allowing it to be acquired and for that task's execution to move forward.
+taco is a C++ multithreaded task processing library built around coroutines. This means that each task is fully capable of suspending itself and then being resumed in the future - with its execution state fully intact from where it left off. This resumption can either be unconditional or dependent on some event. The library provides implementations for a couple synchronization primitives built around this functionality, allowing tasks to, for example, acquire a mutex without any danger of the task locking the thread it is executing on. If the mutex is currently held by some other task, then the acquiring task will simply suspend itself, allowing some other pending task to execute; when the mutex is released it will wake up the suspended task, allowing it to be acquired and for that task's execution to move forward.
 
-Internally, each task is not actually a full blown coroutine. Rather, in the strictest sense of the term there is really only one type of coroutine - the scheduler coroutine. An instance of this coroutine simply spins in a loop and tries to execute as many tasks as it can. It does this using a task stealing algorithm that looks very much like what you would see in any mulithreaded task processing system. If there are no more tasks to execute then this coroutine instance will check and see if any other coroutines are scheduled to run, yielding execution to one of them, and only putting the thread to sleep if there are no other coroutines scheduled.
+Internally, each task is not actually a full blown coroutine. Rather, in a stricter sense of the term there is really only one type of coroutine - the scheduler coroutine. An instance of this coroutine simply spins in a loop and tries to execute as many tasks as it can. It does this using a task stealing algorithm that looks very much like what you would see in many other mulithreaded task processing systems. If there are no more tasks to execute then this coroutine instance will check and see if any other coroutines are scheduled to run, yielding execution to one of them, and then finally only putting the thread to sleep if there are no other coroutines scheduled.
 
-Starting off from initialization of the library, we spin up a number of threads (by default the same number as there are hardware threads) and each of these threads will enter one of these scheduler coroutines. If from here we just schedule tasks that are never going to suspend themselves, then we will never have any more coroutines then that and it really doesn't look all that different from any other task processing system. 
+Starting off from initialization of the library, we spin up a number of threads (by default the same number as there are hardware threads minus one) and each of these threads will enter one of these scheduler coroutines. If from here we just schedule tasks that are never going to suspend themselves, then we will never have any more coroutines, and it really doesn't look all that different from any other task processing system. 
 
 On the other hand, if a task needs to suspend itself for some reason (e.g. waiting on some event to fire) then that task effectively takes ownership of the coroutine instance running it, keeping it from executing other tasks. In this situation we simply create a new instance of the scheduler coroutine (with some logic to reuse existing idle instances) and yield execution to that. At some future point the event will presumably fire, scheduling the coroutine we just suspended and eventually we will make our way back to resuming its execution.
+
+With this functionality, taco is able to support resumable tasks and allows us to build other interesting functionality up such as providing us with support for generator funtions within C++.
 
 ##Basic Usage Examples
 -----
@@ -14,8 +16,8 @@ The simplest example of using taco would be to simply initialize the library and
 
 ```cpp
 //...
-taco::Initialize([] -> void {
-	auto task = taco::Start([] -> void {
+taco::Initialize([]() -> void {
+	auto task = taco::Start([]() -> void {
 		printf("Hello world\n");
 	});
 	task.await();
@@ -26,7 +28,7 @@ taco::Shutdown();
 
 The Initialize function optionally takes as an argument a function; if this argument is passed in then the Initialize function will schedule the function for execution on the main thread and then immediately yield the main thread into the scheduler coroutine. When the function that was passed in completes then the main thread will yield back to the point where we called Initialize.
 
-If we wanted that could have been written instead like this:
+Alternatively, that code could have been written instead like this:
 
 ```cpp
 //...
@@ -43,11 +45,11 @@ taco::Shutdown();
 //...
 ```
 
-The last argument to a scheduling function always specifies the thread we require the task to execute on (0 is the main thread). After scheduling the task we call EnterMain - which causes the main thread to yield execution to one of the scheduler coroutines which will in turn execute the task we just scheduled to it. The task itself will do its thing and then call ExitMain, causing the scheduler coroutine executing on the main thread to yield execution back to the point we called EnterMain.
+The last argument to a scheduling function always specifies the thread we require the task to execute on (0 is the main thread) - this is optional and omitting it will cause the task to be stealable by other threads. After scheduling the task we call EnterMain - which causes the main thread to yield execution to one of the scheduler coroutines which will in turn execute the task we just scheduled to it. The task itself will do its thing and then call ExitMain, causing the scheduler coroutine executing on the main thread to yield execution back to the point we called EnterMain.
 
 It should be noted that while it is prefectly safe to schedule any task from the main thread when it isn't entered into the scheduler, it is not safe to wait on anything from the main thread (e.g. the "task.await()") unless it is currently entered into the scheduler. This might change in the future if people think it would be useful, but I have avoided it for now as it would require some additional complication (and overhead) in the synchronization primitives.
 
-An example of using the synchronization primitives:
+An example of using some of the synchronization primitives:
 
 ```cpp
 //...
@@ -76,7 +78,7 @@ unsigned fibonacci(unsigned n)
 {
 	if (n < 2) return 1;
 
-	auto a = taco::Start(fibonacci, n - 1);
+	auto a = taco::Start(fibonacci, n - 1); // a is of type future<unsigned>
 	auto b = taco::start(fibonacci, n - 2);
 
 	return a + b;
@@ -109,7 +111,7 @@ for (unsigned i=0; i<12; i++)
 
 ##Dependencies
 -----
-The only dependancy taco has is another library of mine - basis. Beyond that it provides some build files for use with the tundra2 build system, but there is small enough amount of code I don't imagine it would be difficult to hook it in with whatever else you wanted to use.
+The only dependancy taco has is another library of mine - basis. Beyond that it provides some build files for use with the tundra build system, but there is a small enough amount of code I don't imagine it would be difficult to hook it in with whatever else you wanted to use.
 
 ##Future
 -----
