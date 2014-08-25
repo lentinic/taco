@@ -13,8 +13,8 @@ unsigned fibonacci(unsigned n)
 {
 	if (n < 2) return 1;
 
-	auto a = taco::Start(fibonacci, n - 1);
-	auto b = taco::Start(fibonacci, n - 2);
+	auto a = taco::Start("fibonacci", [=](){ return fibonacci(n - 1); });
+ 	auto b = taco::Start("fibonacci", [=](){ return fibonacci(n - 2); });
 
 	return a + b;
 }
@@ -27,7 +27,7 @@ void test_futures()
 		std::vector<taco::future<unsigned>> results;
 		for (unsigned i=0; i<12; i++)
 		{
-			results.push_back(taco::Start(fibonacci, i));
+			results.push_back(taco::Start("fibonacci", [=](){ return fibonacci(i); }));
 		}
 
 		std::cout<<"Fibonacci: [ ";

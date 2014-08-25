@@ -36,17 +36,67 @@ namespace taco
 		{
 			event 		ready;
 			TYPE 		data;
+
+			TYPE value() const
+			{
+				return data;
+			}
+		};
+
+		template<>
+		struct future_data<void>
+		{
+			event 		ready;
+
+			void value() const
+			{}
+		};
+
+		template<class RTYPE>
+		struct future_executor
+		{
+			template<class F>
+			future_executor(future_data<RTYPE> * r, const F & fn)
+			{
+				r->data = std::move(fn());
+				r->ready.signal();
+			}
+
+			template<class F, class... ARG_TYPES>
+			future_executor(future_data<RTYPE> * r, const F & fn, ARG_TYPES... parameters)
+			{
+				r->data = std::move(fn(parameters...));
+				r->ready.signal();		
+			}
+		};
+
+		template<>
+		struct future_executor<void>
+		{
+			template<class F>
+			future_executor(future_data<void> * r, const F & fn)
+			{
+				fn();
+				r->ready.signal();
+			}
+
+			template<class F, class... ARG_TYPES>
+			future_executor(future_data<void> * r, const F & fn, ARG_TYPES... parameters)
+			{
+				fn(parameters...);
+				r->ready.signal();
+			}
 		};
 	};
 
 	template<class TYPE>
 	struct future
 	{	
-		TYPE get() const
+		TYPE await() const
 		{
 			BASIS_ASSERT(box);
 			box->ready.wait();
-			return box->data;
+			return box->value();
 		}
 
 		bool ready() const
@@ -56,37 +106,28 @@ namespace taco
 
 		operator TYPE () const
 		{
-			return get();
+			return await();
 		}
 
 		std::shared_ptr<internal::future_data<TYPE>> box;
 	};
-
+	
 	template<class F>
-	auto Start(F f) -> future<decltype(f())>
+	auto Start(const char * name, F fn, uint32_t threadid = TACO_INVALID_THREAD_ID) -> future<decltype(fn())>
 	{
-		typedef decltype(f()) type;
-		future<type> r = { std::make_shared<internal::future_data<type>>() };
+		typedef decltype(fn()) rtype;
+		future<rtype> r = { std::make_shared<internal::future_data<rtype>>() };
 
-		Schedule([=]() -> void {
-			r.box->data = f();
-			r.box->ready.signal();
-		});
+		Schedule(name, [=]() -> void {
+			internal::future_executor<rtype>(r.box.get(), fn);
+		}, threadid);
 		
 		return r;
 	}
 
-	template<class F, class... ARG_TYPES>
-	auto Start(F f, ARG_TYPES... parameters) -> future<decltype(f(parameters...))>
+	template<class F>
+	auto Start(F fn, uint32_t threadid = TACO_INVALID_THREAD_ID) -> future<decltype(fn())>
 	{
-		typedef decltype(f(parameters...)) type;
-		future<type> r = { std::make_shared<internal::future_data<type>>() };
-
-		Schedule([=]() -> void {
-			r.box->data = f(parameters...);
-			r.box->ready.signal();
-		});
-		
-		return r;	
+		return Start(nullptr, fn, threadid);
 	}
 }
