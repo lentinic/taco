@@ -14,7 +14,7 @@ void test_generators()
 	taco::Initialize();
 
 	taco::Schedule([]() -> void {
-		auto fibonacci = taco::StartGenerator([]() -> unsigned {
+		auto fibonacci = taco::StartGenerator("fibonacci", []() -> unsigned {
 			unsigned a = 0;
 			unsigned b = 1;
 			for (;;)
