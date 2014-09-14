@@ -23,11 +23,23 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #pragma once
 
 #include "scheduler.h"
-#include "mutex.h"
-#include "shared_mutex.h"
-#include "shared_lock.h"
-#include "condition.h"
-#include "event.h"
-#include "future.h"
-#include "generator.h"
-#include "auto_blocking.h"
+
+namespace taco
+{
+	class auto_blocking
+	{
+	public:
+		auto_blocking()
+		{
+			BeginBlocking();
+		}
+
+		~auto_blocking()
+		{
+			EndBlocking();
+		}
+
+		auto_blocking(const auto_blocking &) = delete;
+		auto_blocking & operator = (const auto_blocking &) = delete;
+	};
+}
