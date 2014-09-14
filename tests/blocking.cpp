@@ -65,7 +65,7 @@ void test_function(bool blocking, unsigned ntasks, unsigned filelen)
 void test_blocking()
 {
 	taco::Initialize([&]() -> void {
-		printf("Task Count\tFile Dim\tEnabled\tDisabled\tRelative");
+		printf("Task Count\tFile Dim\tEnabled\tDisabled\tRelative\n");
 		for (unsigned tcount=128; tcount<=MAX_TASK_COUNT; tcount+=64)
 		{
 			for (unsigned dim=128; dim<=MAX_FILE_DIM; dim+=64)
@@ -78,7 +78,7 @@ void test_blocking()
 				test_function(false, tcount, dim*dim);
 				auto disabled = basis::GetTimeDeltaMS(start, basis::GetTimestamp());
 
-				printf("%u\t%u\t%u\t%u\t%.2f", tcount, dim, enabled, disabled, enabled / (float) disabled);
+				printf("%u\t%u\t%u\t%u\t%.2f\n", tcount, dim, enabled, disabled, enabled / (float) disabled);
 			}
 		}
 	});
