@@ -30,19 +30,15 @@ namespace taco
 
 	typedef std::function<void()> fiber_fn;
 
-	enum class scheduler_command
-	{
-		none,
-		reschedule
-	};
-
 	struct fiber_base
 	{
 		fiber_fn			fn;
+		fiber_fn			onEnter;
+		fiber_fn			onExit;
 		int 				threadId;
-		scheduler_command 	command;
 		void *				data;
 		const char *		name;
+		bool				isBlocking;
 	};
 
 	void    FiberInitializeThread();

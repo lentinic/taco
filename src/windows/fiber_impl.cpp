@@ -43,12 +43,31 @@ namespace taco
 	basis_thread_local static fiber * PreviousFiber = nullptr;
 	basis_thread_local static fiber * ThreadFiber = nullptr;
 
+
+	static void FiberHandoff(fiber * prev, fiber * cur)
+	{
+		if (prev->base.onExit)
+		{
+			auto tmp = prev->base.onExit;
+			prev->base.onExit = nullptr;
+			tmp();
+		}
+		if (cur->base.onEnter)
+		{
+			auto tmp = cur->base.onEnter;
+			cur->base.onEnter = nullptr;
+			tmp();
+		}
+
+		PreviousFiber = prev;
+		CurrentFiber = cur;
+	}
+
 	static void __stdcall FiberMain(void * arg)
 	{
 		fiber * self = (fiber *) arg;
 		BASIS_ASSERT(self != nullptr);
-		PreviousFiber = CurrentFiber;
-		CurrentFiber = self;
+		FiberHandoff(CurrentFiber, self);
 		self->base.fn();
 	}
 
@@ -59,8 +78,9 @@ namespace taco
 		ThreadFiber = new fiber;
 		ConvertThreadToFiber(ThreadFiber);
 		ThreadFiber->base.threadId = -1;
-		ThreadFiber->base.command = scheduler_command::none;
 		ThreadFiber->base.data = nullptr;
+		ThreadFiber->base.isBlocking = false;
+		ThreadFiber->base.onEnter = ThreadFiber->base.onExit = nullptr;
 		ThreadFiber->handle = GetCurrentFiber();
 		CurrentFiber = ThreadFiber;
 	}
@@ -77,8 +97,9 @@ namespace taco
 		fiber * f = new fiber;
 		f->base.fn = fn;
 		f->base.threadId = -1;
-		f->base.command = scheduler_command::none;
 		f->base.data = nullptr;
+		f->base.isBlocking = false;
+		f->base.onEnter = f->base.onExit = nullptr;
 		f->handle = ::CreateFiber(FIBER_STACK_SIZE, &FiberMain, f);
 		return f;
 	}
@@ -94,10 +115,10 @@ namespace taco
 	{
 		BASIS_ASSERT(f != nullptr);
 		BASIS_ASSERT(f != CurrentFiber);
-		fiber * old = CurrentFiber;
+
+		fiber * self = CurrentFiber;
 		SwitchToFiber(f->handle);
-		PreviousFiber = CurrentFiber;
-		CurrentFiber = old;
+		FiberHandoff(CurrentFiber, self);
 	}
 
 	fiber * FiberCurrent()

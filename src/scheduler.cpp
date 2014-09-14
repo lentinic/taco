@@ -25,6 +25,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <basis/thread_util.h>
 #include <basis/chunk_queue.h>
 #include <basis/string.h>
+#include <basis/shared_mutex.h>
 
 #include "scheduler_priv.h"
 #include "config.h"
@@ -49,7 +50,7 @@ namespace taco
 	typedef basis::chunk_queue<task_entry,basis::queue_access_policy::spmc> shared_task_queue_t;
 	typedef basis::chunk_queue<task_entry,basis::queue_access_policy::mpsc> private_task_queue_t;
 
-	typedef basis::chunk_queue<fiber *,basis::queue_access_policy::spmc> shared_fiber_queue_t;
+	typedef basis::chunk_queue<fiber *,basis::queue_access_policy::mpmc> shared_fiber_queue_t;
 	typedef basis::chunk_queue<fiber *,basis::queue_access_policy::mpsc> private_fiber_queue_t;
 
 	struct scheduler_data
@@ -73,8 +74,6 @@ namespace taco
 		std::vector<fiber*> 		inactive;
 		std::atomic<uint32_t>		privateTaskCount;
 
-		std::function<void()> *		onSuspend;
-
 		uint32_t					threadId;
 		bool 						isActive;
 		bool 						isSignaled;
@@ -85,6 +84,21 @@ namespace taco
 	static std::atomic<uint32_t> GlobalSharedTaskCount;
 	static scheduler_data * SchedulerList = nullptr;
 	static uint32_t ThreadCount = 0;
+
+	struct blocking_queue
+	{
+		blocking_queue()
+			: fibers(BLOCKING_FIBERQ_CHUNK_SIZE)
+		{}
+
+		private_fiber_queue_t		fibers;
+		std::condition_variable_any	wakeCondition;
+		basis::shared_mutex 		wakeMutex;
+		bool 						exitRequested;
+	};
+
+	static blocking_queue BlockingQueue;
+	static std::thread BlockingThread;
 
 	static void WorkerLoop();
 
@@ -206,6 +220,22 @@ namespace taco
 		return next;
 	}
 
+	static fiber * GetNextBlockingFiber()
+	{
+		if (BlockingQueue.exitRequested)
+		{
+			return FiberRoot();
+		}
+
+		fiber * f = nullptr;
+		if (BlockingQueue.fibers.pop_front(f))
+		{
+			return f;
+		}
+
+		return FiberRoot();
+	}
+
 	static void CheckForExitCondition()
 	{
 		if (Scheduler->exitRequested)
@@ -220,31 +250,11 @@ namespace taco
 	static void FiberSwitchPoint()
 	{
 		CheckForExitCondition();
-
-		fiber_base * prev = (fiber_base *) FiberPrevious();
-
-		if (Scheduler->onSuspend)
-		{
-			std::function<void()> * fn = Scheduler->onSuspend;
-			Scheduler->onSuspend = nullptr;
-			(*fn)();
-		}
-
-		if (prev->command == scheduler_command::reschedule)
-		{
-			if (prev->threadId < 0)
-			{
-				Scheduler->sharedFibers.push_back((fiber *)prev);
-			}
-			else
-			{
-				Scheduler->privateFibers.push_back((fiber *)prev);
-			}
-		}
 	}
 
 	static void FiberSwitch(fiber * to)
 	{
+		BASIS_ASSERT(!((fiber_base *)to)->isBlocking);
 		TACO_PROFILER_EMIT(profiler::event_object::fiber, profiler::event_action::suspend);
 		FiberInvoke(to);
 		FiberSwitchPoint();
@@ -286,7 +296,6 @@ namespace taco
 			if (next)
 			{
 				Scheduler->inactive.push_back(self);
-				base->command = scheduler_command::none;
 				FiberSwitch(next);
 				return true;
 			}
@@ -313,6 +322,39 @@ namespace taco
 				}
 				Scheduler->isSignaled = false;
 			}
+		}
+	}
+
+	static void BlockingLoop()
+	{
+		fiber * f = FiberCurrent();
+
+		while (!BlockingQueue.exitRequested)
+		{
+			fiber * n = GetNextBlockingFiber();
+			if (n == f)
+			{
+				std::unique_lock<basis::shared_mutex> lock(BlockingQueue.wakeMutex);
+				// now that we have the lock, try once more before entering the loop
+				n = GetNextBlockingFiber();
+				while (n == f && !BlockingQueue.exitRequested)
+				{
+					BlockingQueue.wakeCondition.wait(lock);
+					n = GetNextBlockingFiber();
+				}
+			}
+
+			if (BlockingQueue.exitRequested)
+			{
+				break;
+			}
+
+			FiberInvoke(n);
+		}
+
+		while (BlockingQueue.fibers.pop_front(f))
+		{
+			FiberDestroy(f);
 		}
 	}
 
@@ -353,7 +395,6 @@ namespace taco
 			SchedulerList[i].threadId = i;
 			SchedulerList[i].isActive = false;
 			SchedulerList[i].isSignaled = false;
-			SchedulerList[i].onSuspend = nullptr;
 		}
 
 		for (unsigned i=1; i<ThreadCount; i++)
@@ -376,6 +417,14 @@ namespace taco
 				FiberShutdownThread();
 			});
 		}
+
+		BlockingQueue.exitRequested = false;
+
+		BlockingThread = std::thread([=]() -> void {
+			FiberInitializeThread();
+			BlockingLoop();
+			FiberShutdownThread();
+		});
 
 		Scheduler = SchedulerList;
 		FiberInitializeThread();
@@ -413,6 +462,13 @@ namespace taco
 		delete [] SchedulerList;
 		SchedulerList = nullptr;
 		ThreadCount = 0;
+
+		{
+			std::unique_lock<basis::shared_mutex> lock(BlockingQueue.wakeMutex);
+			BlockingQueue.exitRequested = true;
+			BlockingQueue.wakeCondition.notify_one();
+		}
+		BlockingThread.join();
 
 		FiberShutdownThread();
 	}
@@ -472,9 +528,60 @@ namespace taco
 	void Switch()	
 	{
 		fiber_base * f = (fiber_base *) FiberCurrent();
-		f->command = scheduler_command::reschedule;
-
+		f->onExit = [&]() -> void {
+			if (f->threadId < 0)
+			{
+				Scheduler->sharedFibers.push_back((fiber *)f);
+			}
+			else
+			{
+				Scheduler->privateFibers.push_back((fiber *)f);
+			}
+		};
 		FiberSwitch(GetNextFiber());
+	}
+
+	void BeginBlocking()
+	{
+		fiber * f = FiberCurrent();
+		fiber_base * base = (fiber_base *) f;
+
+		BASIS_ASSERT(!base->onExit);
+
+		base->onExit = [&]() -> void {
+			base->isBlocking = true;
+			BlockingQueue.wakeMutex.lock_shared();
+			BlockingQueue.fibers.push_back(f);
+			BlockingQueue.wakeMutex.unlock_shared();
+			BlockingQueue.wakeCondition.notify_one();
+		};
+
+		FiberInvoke(GetNextFiber());
+	}
+
+	void EndBlocking()
+	{
+		fiber * f = FiberCurrent();
+		fiber_base * base = (fiber_base *) f;
+		
+		BASIS_ASSERT(!base->onExit);
+
+		base->onExit = [&]() -> void {
+			base->isBlocking = false;
+			if (base->threadId < 0)
+			{
+				SchedulerList[0].sharedFibers.push_back(f);
+				SignalScheduler(SchedulerList);
+			}
+			else
+			{
+				BASIS_ASSERT((unsigned)base->threadId < ThreadCount);
+				SchedulerList[base->threadId].privateFibers.push_back(f);
+				SignalScheduler(SchedulerList + base->threadId);
+			}
+		};
+
+		FiberInvoke(GetNextBlockingFiber());
 	}
 
 	void SetTaskLocalData(void * data)
@@ -497,16 +604,14 @@ namespace taco
 
 	void Suspend()
 	{
-		fiber_base * f = (fiber_base *) FiberCurrent();
-		f->command = scheduler_command::none;
 		FiberSwitch(GetNextFiber());
 	}
 
 	void Suspend(std::function<void()> on_suspend)
 	{
 		fiber_base * f = (fiber_base *) FiberCurrent();
-		f->command = scheduler_command::none;
-		Scheduler->onSuspend = &on_suspend;
+		BASIS_ASSERT(!f->onExit);
+		f->onExit = on_suspend;
 		FiberSwitch(GetNextFiber());
 	}
 	

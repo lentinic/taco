@@ -55,6 +55,9 @@ namespace taco
 	const char * GetTaskName();
 	void Switch();
 	
+	void BeginBlocking();
+	void EndBlocking();
+
 	uint32_t GetThreadCount();
 	uint32_t GetSchedulerId();
 }

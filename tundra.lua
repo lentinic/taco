@@ -47,6 +47,15 @@ Build {
 				"tests/generator.cpp"
 			}
 		}
+		Program {
+			Name = "blocking",
+			Depends = {
+				"taco"
+			},
+			Sources = {
+				"tests/blocking.cpp"
+			}
+		}
 		Default "taco"
 	end,
 	Configs = {
@@ -55,12 +64,15 @@ Build {
 			DefaultOnHost = "windows",
 			Tools = { { "msvc", TargetArch = "x64" } },
 			Env = {
-				CPPDEFS = { "BASIS_PLATFORM_WINDOWS", "TACO_PROFILER_ENABLED" },
+				CPPDEFS = { 
+					"BASIS_PLATFORM_WINDOWS", 
+					{ "TACO_PROFILER_ENABLED", Config = "*-*-profile" },
+				},
 				CXXOPTS = { 
 					"/W4", 
 					"/EHsc",
+					"/FS",
 					{ "/MTd", Config = "*-*-debug" },
-					"/FS"
 				},
 				GENERATE_PDB = "1"
 			}
