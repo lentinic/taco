@@ -69,8 +69,8 @@ namespace taco
 		
 		std::thread 				thread;
 		std::atomic_bool			exitRequested;
-		std::condition_variable		wakeCondition;
-		std::mutex					wakeMutex;
+		std::condition_variable_any	wakeCondition;
+		basis::shared_mutex			wakeMutex;
 		std::vector<fiber*> 		inactive;
 		std::atomic<uint32_t>		privateTaskCount;
 
@@ -134,8 +134,9 @@ namespace taco
 	static void SignalScheduler(scheduler_data * s)
 	{
 		{
-			std::unique_lock<std::mutex> lock(s->wakeMutex);
+			s->wakeMutex.lock_shared();
 			s->isSignaled = true;
+			s->wakeMutex.unlock_shared();
 		}
 
 		s->wakeCondition.notify_one();
@@ -313,7 +314,7 @@ namespace taco
 
 			if (!WorkerIteration())
 			{
-				std::unique_lock<std::mutex> lock(Scheduler->wakeMutex);
+				std::unique_lock<basis::shared_mutex> lock(Scheduler->wakeMutex);
 				if (!Scheduler->isSignaled)
 				{
 					TACO_PROFILER_EMIT(profiler::event_object::thread, profiler::event_action::suspend);
