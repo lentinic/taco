@@ -96,7 +96,8 @@ namespace taco
 		fiber *						current;
 	};
 
-	basis::chunk_queue<blocking_thread*, basis::queue_access_policy::mpmc> BlockingThreads(32);
+	basis::ring_queue<blocking_thread*,basis::queue_access_policy::mpmc> BlockingThreads(BLOCKING_THREAD_LIMIT);
+	std::atomic<int> BlockingThreadCount(0);
 
 	static void WorkerLoop();
 
@@ -400,7 +401,6 @@ namespace taco
 		}
 
 		blocking_thread * thread;
-		int count = 0;
 		while (BlockingThreads.pop_front(thread))
 		{
 			{
@@ -410,15 +410,14 @@ namespace taco
 			thread->workCondition.notify_one();
 			thread->thread.join();
 			delete thread;
-			count++;
 		}
-		printf("Num blocking: %d\n", count);
 
 		ShutdownScheduler();
 
 		delete [] SchedulerList;
 		SchedulerList = nullptr;
 		ThreadCount = 0;
+		BlockingThreadCount = 0;
 
 		FiberShutdownThread();
 	}
@@ -495,16 +494,23 @@ namespace taco
 	{
 		FiberInitializeThread();
 		std::unique_lock<std::mutex> lock(self->workMutex);
-		while (!self->exitRequested)
+		for (;;)
 		{
-			if (self->current)
+			while (!self->current && !self->exitRequested)
 			{
-				FiberInvoke(self->current);
-				self->current = nullptr;
+				self->workCondition.wait(lock);
 			}
 
+			if (self->exitRequested)
+			{
+				break;
+			}
+
+			BASIS_ASSERT(self->current);
+
+			FiberInvoke(self->current);
+			self->current = nullptr;
 			BlockingThreads.push_back(self);
-			self->workCondition.wait(lock);
 		}
 		FiberShutdownThread();
 	}
@@ -516,27 +522,33 @@ namespace taco
 
 		BASIS_ASSERT(!base->onExit);
 
-		base->onExit = [=]() -> void {
-			base->isBlocking = true;
-
-			blocking_thread * thread;
-			if (!BlockingThreads.pop_front(thread))
+		blocking_thread * thread = nullptr;
+		while (!thread && !BlockingThreads.pop_front(thread))
+		{
+			int cur = BlockingThreadCount.fetch_add(1);
+			if (cur == BLOCKING_THREAD_LIMIT)
+			{
+				BlockingThreadCount.store(cur);
+				Switch();
+			}
+			else
 			{
 				thread = new blocking_thread;
 				thread->exitRequested = false;
-				thread->current = f;
+				thread->current = nullptr;
 				thread->thread = std::thread([=]() -> void {
 					BlockingThread(thread);
 				});
 			}
-			else
+		}
+
+		base->onExit = [=]() -> void {
+			base->isBlocking = true;
 			{
-				{
-					std::unique_lock<std::mutex> lock(thread->workMutex);
-					thread->current = f;
-				}
-				thread->workCondition.notify_one();
+				std::unique_lock<std::mutex> lock(thread->workMutex);
+				thread->current = f;
 			}
+			thread->workCondition.notify_one();
 		};
 
 		FiberInvoke(GetNextFiber());
