@@ -4,11 +4,18 @@
 #include <algorithm>
 #include <iostream>
 
+#define TASK_MIN 128
+#define TASK_MAX 256
+#define CPU_MIN 100
+#define CPU_MAX 400
+#define SLEEP_MIN 15000
+#define SLEEP_MAX 60000
+
 void test_independent();
 void test_dependent();
 
 BASIS_TEST_LIST_BEGIN()
-	//BASIS_DECLARE_TEST(test_independent)
+	BASIS_DECLARE_TEST(test_independent)
 	BASIS_DECLARE_TEST(test_dependent)
 BASIS_TEST_LIST_END()
 
@@ -102,11 +109,11 @@ void test_dependent()
 	taco::Initialize([&]() -> void {
 		timewaiting[0] = timewaiting[1] = 0;
 		printf("Task Count\tcpu\tsleep\tenabled\tdisabled\trelative\n");
-		for (unsigned tasks=64; tasks<=512; tasks*=2)
+		for (unsigned tasks=TASK_MIN; tasks<=TASK_MAX; tasks*=2)
 		{
-			for (unsigned cpu=64; cpu<=2048; cpu*=4)
+			for (unsigned cpu=CPU_MIN; cpu<=CPU_MAX; cpu*=2)
 			{	
-				for (unsigned sleep=16384; sleep<=(1<<18); sleep*=2)
+				for (unsigned sleep=SLEEP_MIN; sleep<=SLEEP_MAX; sleep*=2)
 				{
 					auto start = basis::GetTimestamp();
 					dependent(true, tasks, sleep, cpu);
@@ -130,11 +137,11 @@ void test_independent()
 	taco::Initialize([&]() -> void {
 		timewaiting[0] = timewaiting[1] = 0;
 		printf("Task Count\tcpu\tsleep\tenabled\tdisabled\trelative\n");
-		for (unsigned tasks=64; tasks<=512; tasks*=2)
+		for (unsigned tasks=TASK_MIN; tasks<=TASK_MAX; tasks*=2)
 		{
-			for (unsigned cpu=64; cpu<=512; cpu*=2)
+			for (unsigned cpu=CPU_MIN; cpu<=CPU_MAX; cpu*=2)
 			{	
-				for (unsigned sleep=1024; sleep<32768; sleep*=2)
+				for (unsigned sleep=SLEEP_MIN; sleep<=SLEEP_MAX; sleep*=2)
 				{
 					auto start = basis::GetTimestamp();
 					independent(true, tasks, sleep, cpu);
