@@ -66,8 +66,9 @@ namespace taco
 		private_task_queue_t		privateTasks;
 		shared_fiber_queue_t		sharedFibers;
 		private_fiber_queue_t		privateFibers;
-		
+
 		std::thread 				thread;
+
 		std::atomic_bool			exitRequested;
 		std::condition_variable_any	wakeCondition;
 		basis::shared_mutex			wakeMutex;
@@ -85,20 +86,17 @@ namespace taco
 	static scheduler_data * SchedulerList = nullptr;
 	static uint32_t ThreadCount = 0;
 
-	struct blocking_queue
-	{
-		blocking_queue()
-			: fibers(BLOCKING_FIBERQ_CHUNK_SIZE)
-		{}
 
-		private_fiber_queue_t		fibers;
-		std::condition_variable_any	wakeCondition;
-		basis::shared_mutex 		wakeMutex;
+	struct blocking_thread
+	{
+		std::thread 				thread;
+		std::mutex 					workMutex;
+		std::condition_variable		workCondition;
 		bool 						exitRequested;
+		fiber *						current;
 	};
 
-	static blocking_queue BlockingQueue;
-	static std::thread BlockingThread;
+	basis::chunk_queue<blocking_thread*, basis::queue_access_policy::mpmc> BlockingThreads(32);
 
 	static void WorkerLoop();
 
@@ -221,22 +219,6 @@ namespace taco
 		return next;
 	}
 
-	static fiber * GetNextBlockingFiber()
-	{
-		if (BlockingQueue.exitRequested)
-		{
-			return FiberRoot();
-		}
-
-		fiber * f = nullptr;
-		if (BlockingQueue.fibers.pop_front(f))
-		{
-			return f;
-		}
-
-		return FiberRoot();
-	}
-
 	static void CheckForExitCondition()
 	{
 		if (Scheduler->exitRequested)
@@ -282,7 +264,7 @@ namespace taco
 		}
 		else if (GetSharedTask(todo))
 		{
-			base->threadId = -1;
+			base->threadId = -int(Scheduler->threadId + 1);
 			base->data = nullptr;
 			base->name = todo.name;
 			todo();
@@ -323,39 +305,6 @@ namespace taco
 				}
 				Scheduler->isSignaled = false;
 			}
-		}
-	}
-
-	static void BlockingLoop()
-	{
-		fiber * f = FiberCurrent();
-
-		while (!BlockingQueue.exitRequested)
-		{
-			fiber * n = GetNextBlockingFiber();
-			if (n == f)
-			{
-				std::unique_lock<basis::shared_mutex> lock(BlockingQueue.wakeMutex);
-				// now that we have the lock, try once more before entering the loop
-				n = GetNextBlockingFiber();
-				while (n == f && !BlockingQueue.exitRequested)
-				{
-					BlockingQueue.wakeCondition.wait(lock);
-					n = GetNextBlockingFiber();
-				}
-			}
-
-			if (BlockingQueue.exitRequested)
-			{
-				break;
-			}
-
-			FiberInvoke(n);
-		}
-
-		while (BlockingQueue.fibers.pop_front(f))
-		{
-			FiberDestroy(f);
 		}
 	}
 
@@ -419,14 +368,6 @@ namespace taco
 			});
 		}
 
-		BlockingQueue.exitRequested = false;
-
-		BlockingThread = std::thread([=]() -> void {
-			FiberInitializeThread();
-			BlockingLoop();
-			FiberShutdownThread();
-		});
-
 		Scheduler = SchedulerList;
 		FiberInitializeThread();
 	}
@@ -458,18 +399,26 @@ namespace taco
 			SchedulerList[i].thread.join();
 		}
 
+		blocking_thread * thread;
+		int count = 0;
+		while (BlockingThreads.pop_front(thread))
+		{
+			{
+				std::unique_lock<std::mutex> lock(thread->workMutex);
+				thread->exitRequested = true;
+			}
+			thread->workCondition.notify_one();
+			thread->thread.join();
+			delete thread;
+			count++;
+		}
+		printf("Num blocking: %d\n", count);
+
 		ShutdownScheduler();
 
 		delete [] SchedulerList;
 		SchedulerList = nullptr;
 		ThreadCount = 0;
-
-		{
-			std::unique_lock<basis::shared_mutex> lock(BlockingQueue.wakeMutex);
-			BlockingQueue.exitRequested = true;
-			BlockingQueue.wakeCondition.notify_one();
-		}
-		BlockingThread.join();
 
 		FiberShutdownThread();
 	}
@@ -542,6 +491,24 @@ namespace taco
 		FiberSwitch(GetNextFiber());
 	}
 
+	void BlockingThread(blocking_thread * self)
+	{
+		FiberInitializeThread();
+		std::unique_lock<std::mutex> lock(self->workMutex);
+		while (!self->exitRequested)
+		{
+			if (self->current)
+			{
+				FiberInvoke(self->current);
+				self->current = nullptr;
+			}
+
+			BlockingThreads.push_back(self);
+			self->workCondition.wait(lock);
+		}
+		FiberShutdownThread();
+	}
+
 	void BeginBlocking()
 	{
 		fiber * f = FiberCurrent();
@@ -549,12 +516,27 @@ namespace taco
 
 		BASIS_ASSERT(!base->onExit);
 
-		base->onExit = [&]() -> void {
+		base->onExit = [=]() -> void {
 			base->isBlocking = true;
-			BlockingQueue.wakeMutex.lock_shared();
-			BlockingQueue.fibers.push_back(f);
-			BlockingQueue.wakeMutex.unlock_shared();
-			BlockingQueue.wakeCondition.notify_one();
+
+			blocking_thread * thread;
+			if (!BlockingThreads.pop_front(thread))
+			{
+				thread = new blocking_thread;
+				thread->exitRequested = false;
+				thread->current = f;
+				thread->thread = std::thread([=]() -> void {
+					BlockingThread(thread);
+				});
+			}
+			else
+			{
+				{
+					std::unique_lock<std::mutex> lock(thread->workMutex);
+					thread->current = f;
+				}
+				thread->workCondition.notify_one();
+			}
 		};
 
 		FiberInvoke(GetNextFiber());
@@ -567,22 +549,22 @@ namespace taco
 		
 		BASIS_ASSERT(!base->onExit);
 
-		base->onExit = [&]() -> void {
+		base->onExit = [=]() -> void {
 			base->isBlocking = false;
 			if (base->threadId < 0)
 			{
-				SchedulerList[0].sharedFibers.push_back(f);
-				SignalScheduler(SchedulerList);
+				SchedulerList[-(base->threadId + 1)].sharedFibers.push_back(f);
+				SignalScheduler(SchedulerList - (base->threadId + 1));
 			}
 			else
 			{
-				BASIS_ASSERT((unsigned)base->threadId < ThreadCount);
-				SchedulerList[base->threadId].privateFibers.push_back(f);
-				SignalScheduler(SchedulerList + base->threadId);
+				BASIS_ASSERT((unsigned)base->threadId < Scheduler->threadId);
+				Scheduler->privateFibers.push_back(f);
+				SignalScheduler(Scheduler);
 			}
 		};
 
-		FiberInvoke(GetNextBlockingFiber());
+		FiberInvoke(FiberRoot());
 	}
 
 	void SetTaskLocalData(void * data)
