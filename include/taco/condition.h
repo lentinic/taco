@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2013 Chris Lentini
+Chris Lentini
 http://divergentcoder.com
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of 
@@ -54,7 +54,7 @@ namespace taco
 
 		void _wait(std::function<void()> on_suspend);
 
-		std::deque<fiber *> 	m_waiting;
-		mutex 					m_mutex;
+		std::deque<fiber *>		m_waiting;
+		mutex              		m_mutex;
 	};
 }

@@ -97,7 +97,7 @@ namespace taco
 		shared_lock(const shared_lock &);
 		shared_lock & operator = (const shared_lock &);
 
-		MTYPE * m_mutex;
+		MTYPE *	m_mutex;
 		bool	m_locked;
 	};
 }

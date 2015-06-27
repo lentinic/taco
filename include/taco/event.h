@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2013 Chris Lentini
+Chris Lentini
 http://divergentcoder.com
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of 
@@ -47,8 +47,8 @@ namespace taco
 		event(const event &) = delete;
 		event & operator = (const event & ) = delete;
 
-		std::deque<fiber *> 	m_waiting;
-		mutex					m_mutex;
-		std::atomic<bool>		m_ready;
+		std::deque<fiber *>		m_waiting;
+		mutex              		m_mutex;
+		std::atomic<bool>  		m_ready;
 	};
 }

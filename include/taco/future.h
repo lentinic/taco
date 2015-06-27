@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2013 Chris Lentini
+Chris Lentini
 http://divergentcoder.com
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of 
@@ -34,8 +34,8 @@ namespace taco
 		template<class TYPE>
 		struct future_data
 		{
-			event 		ready;
-			TYPE 		data;
+			event 	ready;
+			TYPE  	data;
 
 			TYPE value() const
 			{
@@ -46,7 +46,7 @@ namespace taco
 		template<>
 		struct future_data<void>
 		{
-			event 		ready;
+			event ready;
 
 			void value() const
 			{}

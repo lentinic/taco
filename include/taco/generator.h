@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2013 Chris Lentini
+Chris Lentini
 http://divergentcoder.com
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of 
@@ -35,8 +35,8 @@ namespace taco
 		{
 			event 		evtWrite;
 			event 		evtRead;
-			TYPE 		data;
-			bool		complete;
+			TYPE  		data;
+			bool  		complete;
 		};
 	};
 
