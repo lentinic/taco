@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2013 Chris Lentini
+Chris Lentini
 http://divergentcoder.com
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of 
@@ -19,8 +19,6 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#if defined(BASIS_PLATFORM_WINDOWS)
-
 #include <Windows.h>
 #include <functional>
 #include <atomic>
@@ -35,8 +33,8 @@ namespace taco
 {
 	struct fiber
 	{
-		fiber_base					base;
-		void *						handle;
+		fiber_base		base;
+		void *    		handle;
 	};
 
 	basis_thread_local static fiber * CurrentFiber = nullptr; 
@@ -136,5 +134,3 @@ namespace taco
 		return ThreadFiber;
 	}
 }
-
-#endif

@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2013 Chris Lentini
+Chris Lentini
 http://divergentcoder.com
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of 
@@ -32,13 +32,13 @@ namespace taco
 
 	struct fiber_base
 	{
-		fiber_fn			fn;
-		fiber_fn			onEnter;
-		fiber_fn			onExit;
-		int 				threadId;
-		void *				data;
+		fiber_fn    		fn;
+		fiber_fn    		onEnter;
+		fiber_fn    		onExit;
+		int         		threadId;
+		void *      		data;
 		const char *		name;
-		bool				isBlocking;
+		bool        		isBlocking;
 	};
 
 	void    FiberInitializeThread();
