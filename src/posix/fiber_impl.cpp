@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2013 Chris Lentini
+Chris Lentini
 http://divergentcoder.com
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of 
@@ -19,8 +19,6 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#if defined(BASIS_PlATFORM_LINUX)
-
 #include <ucontext.h>
 #include <setjmp.h>
 
@@ -39,14 +37,33 @@ namespace taco
 {
 	struct fiber
 	{
-		fiber_base					base;
-		ucontext_t					ctx;
-		jmp_buf					jmp;
+		fiber_base				base;
+		ucontext_t				ctx;
+		jmp_buf   				jmp;
 	};
 
 	basis_thread_local static fiber * CurrentFiber = nullptr; 
 	basis_thread_local static fiber * PreviousFiber = nullptr;
 	basis_thread_local static fiber * ThreadFiber = nullptr;
+
+	static void FiberHandoff(fiber * prev, fiber * cur)
+	{
+		if (prev->base.onExit)
+		{
+			auto tmp = prev->base.onExit;
+			prev->base.onExit = nullptr;
+			tmp();
+		}
+		if (cur->base.onEnter)
+		{
+			auto tmp = cur->base.onEnter;
+			cur->base.onEnter = nullptr;
+			tmp();
+		}
+
+		PreviousFiber = prev;
+		CurrentFiber = cur;
+	}
 
 	static void FiberMain(void * arg)
 	{
@@ -57,9 +74,12 @@ namespace taco
 		{
 			swapcontext(&self->ctx, &CurrentFiber->ctx);
 		}
+		else
+		{
+			BASIS_ASSERT_FAILED();
+		}
 
-		PreviousFiber = CurrentFiber;
-		CurrentFiber = self;
+		FiberHandoff(CurrentFiber, self);
 
 		self->base.fn();
 	}
@@ -115,15 +135,18 @@ namespace taco
 	{
 		BASIS_ASSERT(f != nullptr);
 		BASIS_ASSERT(f != CurrentFiber);
-		fiber * old = CurrentFiber;
+		fiber * self = CurrentFiber;
 		
-		if (_setjmp(old->jmp) == 0)
+		if (_setjmp(self->jmp) == 0)
 		{
 			_longjmp(f->jmp, 1);
 		}
+		else
+		{
+			BASIS_ASSERT_FAILED();
+		}
 
-		PreviousFiber = CurrentFiber;
-		CurrentFiber = old;
+		FiberHandoff(CurrentFiber, self);
 	}
 
 	fiber * FiberCurrent()
@@ -141,5 +164,3 @@ namespace taco
 		return ThreadFiber;
 	}
 }
-
-#endif
