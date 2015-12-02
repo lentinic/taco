@@ -11,13 +11,11 @@ Build {
 			Sources = {
 				"src/scheduler.cpp",
 				"src/windows/fiber_impl.cpp",
-				"src/linux/fiber_impl.cpp",
 				"src/mutex.cpp",
 				"src/condition.cpp",
 				"src/shared_mutex.cpp",
 				"src/event.cpp",
-				"src/profiler.cpp",
-				"src/json_profiler.cpp"
+				"src/profiler.cpp"
 			}
 		}
 		Program {
@@ -73,6 +71,7 @@ Build {
 					"/EHsc",
 					"/FS",
 					{ "/MTd", Config = "*-*-debug" },
+					{ "/MT", Config="*-*-release" }
 				},
 				GENERATE_PDB = "1"
 			}
@@ -86,9 +85,8 @@ Build {
 				CXXOPTS = { 
 					"/W4", 
 					"/EHsc",
-					{ "/MTd", Config = "*-*-debug" },
 					"/FS",
-					"/analyze",
+					"/analyze"
 				}
 			}
 		},

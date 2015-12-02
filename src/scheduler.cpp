@@ -34,16 +34,20 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 namespace taco
 {
+	basis_thread_local static uint64_t CurrentTaskId;
+	
 	struct task_entry
 	{
-		task_fn			fn;
-		basis::string	name;
+		task_fn         fn;
+		basis::string   name;
+		uint64_t        id;
 
 		void operator () ()
 		{
-			TACO_PROFILER_EMIT(profiler::event_object::task, profiler::event_action::start, name);
+			CurrentTaskId = id;
+			TACO_PROFILER_EMIT(profiler::event_type::start, name);
 			fn();
-			TACO_PROFILER_EMIT(profiler::event_object::task, profiler::event_action::complete, name);
+			TACO_PROFILER_EMIT(profiler::event_type::complete, name);
 		}
 	};
 
@@ -85,7 +89,7 @@ namespace taco
 	static std::atomic<uint32_t> GlobalSharedTaskCount;
 	static scheduler_data * SchedulerList = nullptr;
 	static uint32_t ThreadCount = 0;
-
+	static std::atomic<uint64_t> GlobalTaskCounter;
 
 	struct blocking_thread
 	{
@@ -100,6 +104,11 @@ namespace taco
 	std::atomic<int> BlockingThreadCount(0);
 
 	static void WorkerLoop();
+
+	uint64_t GenTaskId()
+	{
+		return GlobalTaskCounter.fetch_add(1);
+	}
 
 	static bool HasTasks()
 	{
@@ -143,7 +152,7 @@ namespace taco
 
 	static void AskForHelp(size_t count)
 	{
-		TACO_PROFILER_SCOPE("AskForHelp");
+		TACO_PROFILER_LOG("Thread requesting help");
 
 		uint32_t start = Scheduler->threadId;
 		uint32_t id = (start + 1) < ThreadCount ? (start + 1) : 0;
@@ -225,24 +234,23 @@ namespace taco
 		if (Scheduler->exitRequested)
 		{
 			Scheduler->inactive.push_back(FiberCurrent());
-			TACO_PROFILER_EMIT(taco::profiler::event_object::fiber, taco::profiler::event_action::complete);
 			FiberInvoke(FiberRoot());
 			BASIS_ASSERT_FAILED;
 		}
 	}
 
-	static void FiberSwitchPoint()
-	{
-		CheckForExitCondition();
-	}
-
 	static void FiberSwitch(fiber * to)
 	{
 		BASIS_ASSERT(!((fiber_base *)to)->isBlocking);
-		TACO_PROFILER_EMIT(profiler::event_object::fiber, profiler::event_action::suspend);
+		TACO_PROFILER_EMIT(profiler::evemt_type::suspend);
+		
+		uint64_t task_id = CurrentTaskId;
 		FiberInvoke(to);
-		FiberSwitchPoint();
-		TACO_PROFILER_EMIT(profiler::event_object::fiber, profiler::event_action::resume);
+		CurrentTaskId = task_id;
+
+		CheckForExitCondition();
+		
+		TACO_PROFILER_EMIT(profiler::event_type::resume);
 	}
 
 	static bool WorkerIteration()
@@ -289,8 +297,6 @@ namespace taco
 
 	static void WorkerLoop()
 	{
-		TACO_PROFILER_EMIT(profiler::event_object::fiber, profiler::event_action::start);
-		FiberSwitchPoint();
 		for(;;)
 		{
 			CheckForExitCondition();
@@ -300,9 +306,9 @@ namespace taco
 				std::unique_lock<basis::shared_mutex> lock(Scheduler->wakeMutex);
 				if (!Scheduler->isSignaled)
 				{
-					TACO_PROFILER_EMIT(profiler::event_object::thread, profiler::event_action::suspend);
+					TACO_PROFILER_EMIT(profiler::event_type::sleep)
 					Scheduler->wakeCondition.wait(lock);
-					TACO_PROFILER_EMIT(profiler::event_object::thread, profiler::event_action::resume);
+					TACO_PROFILER_EMIT(profiler::event_type::awake)
 				}
 				Scheduler->isSignaled = false;
 			}
@@ -353,16 +359,12 @@ namespace taco
 			SchedulerList[i].thread = std::thread([=]() -> void {
 				Scheduler = SchedulerList + i;
 
-				TACO_PROFILER_EMIT(profiler::event_object::thread, profiler::event_action::start);
-
 				FiberInitializeThread();
 				fiber * f = FiberCreate(&WorkerLoop);
 
 				Scheduler->isActive = true;
 				FiberInvoke(f);
 				Scheduler->isActive = false;
-
-				TACO_PROFILER_EMIT(profiler::event_object::thread, profiler::event_action::complete);
 
 				ShutdownScheduler();
 				FiberShutdownThread();
@@ -429,13 +431,9 @@ namespace taco
 
 		fiber * f = FiberCreate(&WorkerLoop);
 
-		TACO_PROFILER_EMIT(profiler::event_object::thread, profiler::event_action::start);
-
 		Scheduler->isActive = true;
 		FiberInvoke(f);
 		Scheduler->isActive = false;
-
-		TACO_PROFILER_EMIT(profiler::event_object::thread, profiler::event_action::complete);
 
 		Scheduler->exitRequested = false;
 	}
@@ -453,7 +451,7 @@ namespace taco
 		if (threadid >=0 && threadid < ThreadCount)
 		{
 			scheduler_data * s = SchedulerList + threadid;
-			s->privateTasks.push_back<task_entry>({ fn, basis::stralloc(name) });
+			s->privateTasks.push_back<task_entry>({ fn, basis::stralloc(name), GenTaskId() });
 			s->privateTaskCount.fetch_add(1, std::memory_order_relaxed);
 
 			if (s != Scheduler)
@@ -465,7 +463,7 @@ namespace taco
 		{
 			BASIS_ASSERT(threadid == TACO_INVALID_THREAD_ID);
 			
-			Scheduler->sharedTasks.push_back<task_entry>({ fn, basis::stralloc(name) });
+			Scheduler->sharedTasks.push_back<task_entry>({ fn, basis::stralloc(name), GenTaskId() });
 			uint32_t count = GlobalSharedTaskCount.fetch_add(1, std::memory_order_relaxed) + 1;
 			if (count > 1 || !Scheduler->isActive)
 			{
@@ -633,6 +631,11 @@ namespace taco
 	uint32_t GetSchedulerId()
 	{
 		return Scheduler ? Scheduler->threadId : INVALID_SCHEDULER_ID;
+	}
+
+	uint64_t GetTaskId()
+	{
+		return CurrentTaskId;
 	}
 
 	uint32_t GetThreadCount()

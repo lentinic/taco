@@ -29,21 +29,26 @@ namespace taco
 {
 	namespace profiler
 	{
-		void Emit(event_object object, event_action action, const char * name);
+		void Emit(event_type type, const char * message);
 	}
 }
 
 #if defined(TACO_PROFILER_ENABLED)
-#define TACO_PROFILER_EMIT_FULL(object, action, name) taco::profiler::Emit(object, action, name)
-#define TACO_PROFILER_EMIT_NONAME(object, action) taco::profiler::Emit(object, action, "")
-#define TACO_PROFILER_EMIT_ACTION(action) taco::profiler::Emit(taco::profiler::event_object::none, action, "")
+
+#define TACO_PROFILER_EMIT_NAMED(type, message) \
+	taco::profiler::Emit(type, message)
+
+#define TACO_PROFILER_EMIT_NONAME(type) \
+	taco::profiler::Emit(type, "")
+
 #else
-#define TACO_PROFILER_EMIT_FULL(object, action, name)
-#define TACO_PROFILER_EMIT_NONAME(object, action)
-#define TACO_PROFILER_EMIT_ACTION(action)
+
+#define TACO_PROFILER_EMIT_NAMED(type, message)
+#define TACO_PROFILER_EMIT_NONAME(type)
+
 #endif
 
 #define TACO_PROFILER_SELECTOR(tuple) TACO_PROFILER_SELECTOR_IMPL tuple
-#define TACO_PROFILER_SELECTOR_IMPL(_1,_2,_3,N,...) N
+#define TACO_PROFILER_SELECTOR_IMPL(_1,_2,N,...) N
 #define TACO_PROFILER_EMIT(...) \
-	TACO_PROFILER_SELECTOR((__VA_ARGS__,TACO_PROFILER_EMIT_FULL,TACO_PROFILER_EMIT_NONAME,TACO_PROFILER_EMIT_ACTION))(__VA_ARGS__)
+	TACO_PROFILER_SELECTOR((__VA_ARGS__,TACO_PROFILER_EMIT_NAMED,TACO_PROFILER_EMIT_NONAME))(__VA_ARGS__)

@@ -60,4 +60,5 @@ namespace taco
 
 	uint32_t GetThreadCount();
 	uint32_t GetSchedulerId();
+	uint64_t GetTaskId();
 }

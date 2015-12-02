@@ -45,7 +45,7 @@ namespace taco
 
 	void condition::_wait(std::function<void()> on_suspend)
 	{
-		TACO_PROFILER_SCOPE("condition::wait");
+		TACO_PROFILER_LOG("condition::wait");
 
 		fiber * cur = FiberCurrent();
 		BASIS_ASSERT(cur);
@@ -59,7 +59,7 @@ namespace taco
 
 	void condition::notify_one()
 	{
-		TACO_PROFILER_SCOPE("condition::notify_one");
+		TACO_PROFILER_LOG("condition::notify_one");
 
 		std::unique_lock<mutex> lock(m_mutex);
 		fiber * f = m_waiting.front();
@@ -69,7 +69,7 @@ namespace taco
 
 	void condition::notify_all()
 	{
-		TACO_PROFILER_SCOPE("condition::notify_all");
+		TACO_PROFILER_LOG("condition::notify_all");
 		
 		std::unique_lock<mutex> lock(m_mutex);
 		while (!m_waiting.empty())

@@ -29,36 +29,35 @@ namespace taco
 {
 	namespace profiler
 	{
-		enum class event_object
-		{
-			none,
-			thread,
-			fiber,
-			task,
-			scope
-		};
-
-		enum class event_action
+		enum class event_type
 		{
 			schedule,
 			start,
 			suspend,
 			resume,
-			complete
+			complete,
+			sleep,
+			awake,
+			log,
+			enter_scope,
+			exit_scope
 		};
 
 		struct event
 		{
-			event_object	object;
-			event_action	action;
-			basis::tick_t	timestamp;
-			const char *	name;
+			basis::tick_t   timestamp;
+			uint64_t        task_id;
+			uint64_t        thread_id;
+			event_type      type;
+			const char *    message;
 		};
 
-		typedef std::function<void(event)> listener_fn;
+		typedef void(listener_fn)(event);
 
-		basis::handle32 InstallListener(listener_fn fn);
-		void UninstallListener(basis::handle32 id);
+		listener_fn * InstallListener(listener_fn * fn);
+
+		void DebugLog(const char * file, int line, const char * fmt, ...);
+		void Log(const char * fmt, ...);
 
 		class scope
 		{
@@ -79,4 +78,12 @@ namespace taco
 #define TACO_PROFILER_SCOPE(name) taco::profiler::scope BASIS_CONCAT(tmp_scope, __LINE__)(name)
 #else
 #define TACO_PROFILER_SCOPE(name)
+#endif
+
+#if defined(TACO_PROFILE_ENABLED)
+#define TACO_PROFILER_DEBUG_LOG(fmt, ...) taco::profiler::DebugLog(__FILE__, __LINE__, fmt, __VA_ARGS__)
+#define TACO_PROFILER_LOG(fmt, ...) taco::profiler::DebugLog(fmt, __VA_ARGS__)
+#else
+#define TACO_PROFILER_DEBUG_LOG(fmt, ...)
+#define TACO_PROFILER_LOG(fmt, ...)
 #endif

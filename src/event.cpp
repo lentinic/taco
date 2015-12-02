@@ -45,7 +45,7 @@ namespace taco
 
 	void event::wait()
 	{
-		TACO_PROFILER_SCOPE("event::wait");
+		TACO_PROFILER_LOG("event::wait");
 
 		fiber * cur = FiberCurrent();
 		BASIS_ASSERT(cur);
@@ -70,7 +70,7 @@ namespace taco
 
 	void event::signal()
 	{
-		TACO_PROFILER_SCOPE("event::signal");
+		TACO_PROFILER_LOG("event::signal");
 		
 		m_mutex.lock();
 		m_ready = true;

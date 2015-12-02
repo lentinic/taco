@@ -22,43 +22,49 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <mutex>
 #include <basis/shared_mutex.h>
 #include <taco/profiler.h>
+#include <taco/scheduler.h>
 #include "profiler_priv.h"
 
 namespace taco
 {
 	namespace profiler
 	{
-		basis::shared_mutex SignalMutex;
-		basis::signal<void(event)> EventSignal;
-
-		void Emit(event_object object, event_action action, const char * name)
+		void DefaultProfilerListener(event evt)
 		{
-			SignalMutex.lock_shared();
-			EventSignal({ object, action, basis::GetTimestamp(), name });
-			SignalMutex.unlock_shared();
+			BASIS_UNUSED(evt);
 		}
 
-		basis::handle32 InstallListener(listener_fn fn)
+		static listener_fn * ProfilerEventListener = &DefaultProfilerListener;
+
+		void Emit(event_type type, const char * message)
 		{
-			std::unique_lock<basis::shared_mutex> lock(SignalMutex);
-			return EventSignal.connect(fn);
+			ProfilerEventListener({  basis::GetTimestamp(), GetTaskId(), GetSchedulerId(), type, message });
 		}
 
-		void UninstallListener(basis::handle32 id)
+		listener_fn * InstallListener(listener_fn * fn)
 		{
-			std::unique_lock<basis::shared_mutex> lock(SignalMutex);
-			EventSignal.disconnect(id);
+			listener_fn * prev = ProfilerEventListener;
+			ProfilerEventListener = fn ? fn : &DefaultProfilerListener;
+			return prev;
+		}
+
+		void DebugLog(const char * file, int line, const char * fmt, ...)
+		{
+		}
+
+		void Log(const char * fmt, ...)
+		{	
 		}
 
 		scope::scope(const char * name)
 			: 	m_name(name)
 		{
-			Emit(event_object::scope, event_action::start, name);
+			Emit(event_type::enter_scope, name);
 		}
 
 		scope::~scope()
 		{
-			Emit(event_object::scope, event_action::complete, m_name);
+			Emit(event_type::exit_scope, m_name);
 		}
 
 	}

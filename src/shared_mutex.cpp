@@ -40,7 +40,7 @@ namespace taco
 	{
 		BASIS_ASSERT(IsSchedulerThread());
 		
-		TACO_PROFILER_SCOPE("shared_mutex::try_lock_shared");
+		TACO_PROFILER_LOG("shared_mutex::try_lock_shared");
 
 		uint32_t state = m_state.fetch_add(1);
 		if (!!(state & EXCLUSIVE))
@@ -55,7 +55,7 @@ namespace taco
 	{
 		BASIS_ASSERT(IsSchedulerThread());
 
-		TACO_PROFILER_SCOPE("shared_mutex::lock_shared");
+		TACO_PROFILER_LOG("shared_mutex::lock_shared");
 		unsigned counter = 0;
 		while (!try_lock_shared())
 		{
@@ -76,7 +76,7 @@ namespace taco
 	{
 		BASIS_ASSERT(IsSchedulerThread());
 
-		TACO_PROFILER_SCOPE("shared_mutex::unlock_shared");
+		TACO_PROFILER_LOG("shared_mutex::unlock_shared");
 		uint32_t state = m_state.fetch_sub(1);
 
 		BASIS_ASSERT((state & (~EXCLUSIVE)) != 0);
@@ -86,7 +86,7 @@ namespace taco
 	{
 		BASIS_ASSERT(IsSchedulerThread());
 
-		TACO_PROFILER_SCOPE("shared_mutex::try_lock");
+		TACO_PROFILER_LOG("shared_mutex::try_lock");
 		uint32_t expected = 0;
 		return m_state.compare_exchange_strong(expected, EXCLUSIVE);
 	}
@@ -95,7 +95,7 @@ namespace taco
 	{
 		BASIS_ASSERT(IsSchedulerThread());
 
-		TACO_PROFILER_SCOPE("shared_mutex::try_lock");
+		TACO_PROFILER_LOG("shared_mutex::try_lock");
 		uint32_t expected = 0;
 		return m_state.compare_exchange_weak(expected, EXCLUSIVE);	
 	}
@@ -104,7 +104,7 @@ namespace taco
 	{
 		BASIS_ASSERT(IsSchedulerThread());
 
-		TACO_PROFILER_SCOPE("shared_mutex::lock");
+		TACO_PROFILER_LOG("shared_mutex::lock");
 
 		// Try to acquire the lock, but if we can't try and prevent further shared locks
 		uint32_t state = m_state.fetch_or(EXCLUSIVE);
@@ -152,7 +152,7 @@ namespace taco
 	{
 		BASIS_ASSERT(IsSchedulerThread());
 
-		TACO_PROFILER_SCOPE("shared_mutex::unlock");
+		TACO_PROFILER_LOG("shared_mutex::unlock");
 		uint32_t state = m_state.fetch_and(~EXCLUSIVE);
 		BASIS_ASSERT(!!(state & EXCLUSIVE));
 	}

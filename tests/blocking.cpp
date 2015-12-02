@@ -31,7 +31,7 @@ void dependent(bool blocking, unsigned ntasks, unsigned sleeptime, unsigned cput
 
 			auto t0 = basis::GetTimestamp();
 			std::this_thread::sleep_for(std::chrono::microseconds(sleeptime));
-			timewaiting[blocking ? 0 : 1] += basis::GetTimestamp() - t0;
+			timewaiting[blocking ? 0 : 1] += (uint32_t)(basis::GetTimestamp() - t0);
 			if (blocking) { taco::EndBlocking(); }
 
 			unsigned steps = 0;
@@ -67,7 +67,7 @@ void independent(bool blocking, unsigned ntasks, unsigned sleeptime, unsigned cp
 
 			auto t0 = basis::GetTimestamp();
 			std::this_thread::sleep_for(std::chrono::microseconds(sleeptime));
-			timewaiting[blocking ? 0 : 1] += basis::GetTimestamp() - t0;
+			timewaiting[blocking ? 0 : 1] += (uint32_t)(basis::GetTimestamp() - t0);
 			if (blocking) { taco::EndBlocking(); }
 		});
 	}
