@@ -47,7 +47,7 @@ namespace taco
 			CurrentTaskId = id;
 			TACO_PROFILER_EMIT(profiler::event_type::start, name);
 			fn();
-			TACO_PROFILER_EMIT(profiler::event_type::complete, name);
+			TACO_PROFILER_EMIT(profiler::event_type::complete);
 		}
 	};
 
@@ -152,7 +152,7 @@ namespace taco
 
 	static void AskForHelp(size_t count)
 	{
-		TACO_PROFILER_LOG("Thread requesting help");
+		TACO_PROFILER_LOG("Help Requested");
 
 		uint32_t start = Scheduler->threadId;
 		uint32_t id = (start + 1) < ThreadCount ? (start + 1) : 0;
@@ -249,7 +249,7 @@ namespace taco
 		CurrentTaskId = task_id;
 
 		CheckForExitCondition();
-		
+
 		TACO_PROFILER_EMIT(profiler::event_type::resume);
 	}
 
