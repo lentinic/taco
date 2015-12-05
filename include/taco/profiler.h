@@ -24,6 +24,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <basis/handle.h>
 #include <basis/timer.h>
+#include <basis/string.h>
 
 namespace taco
 {
@@ -49,14 +50,13 @@ namespace taco
 			uint64_t        task_id;
 			uint64_t        thread_id;
 			event_type      type;
-			const char *    message;
+			basis::string	message;
 		};
 
 		typedef void(listener_fn)(event);
 
 		listener_fn * InstallListener(listener_fn * fn);
 
-		void DebugLog(const char * file, int line, const char * fmt, ...);
 		void Log(const char * fmt, ...);
 
 		class scope
@@ -81,9 +81,7 @@ namespace taco
 #endif
 
 #if defined(TACO_PROFILE_ENABLED)
-#define TACO_PROFILER_DEBUG_LOG(fmt, ...) taco::profiler::DebugLog(__FILE__, __LINE__, fmt, __VA_ARGS__)
 #define TACO_PROFILER_LOG(fmt, ...) taco::profiler::DebugLog(fmt, __VA_ARGS__)
 #else
-#define TACO_PROFILER_DEBUG_LOG(fmt, ...)
 #define TACO_PROFILER_LOG(fmt, ...)
 #endif

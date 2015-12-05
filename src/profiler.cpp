@@ -36,7 +36,7 @@ namespace taco
 
 		static listener_fn * ProfilerEventListener = &DefaultProfilerListener;
 
-		void Emit(event_type type, const char * message)
+		void Emit(event_type type, basis::string message)
 		{
 			ProfilerEventListener({  basis::GetTimestamp(), GetTaskId(), GetSchedulerId(), type, message });
 		}
@@ -48,12 +48,16 @@ namespace taco
 			return prev;
 		}
 
-		void DebugLog(const char * file, int line, const char * fmt, ...)
-		{
-		}
-
 		void Log(const char * fmt, ...)
-		{	
+		{
+			va_list args;
+			va_start(args, fmt);
+			basis::string msg = basis::strvprintf(fmt, vargs);
+			va_end(args);
+
+			Emit(event_type::log, msg);
+
+			basis::strfree(msg);
 		}
 
 		scope::scope(const char * name)

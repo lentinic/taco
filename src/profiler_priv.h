@@ -29,7 +29,7 @@ namespace taco
 {
 	namespace profiler
 	{
-		void Emit(event_type type, const char * message);
+		void Emit(event_type type, basis::string message);
 	}
 }
 
