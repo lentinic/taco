@@ -36,8 +36,8 @@ namespace taco
 
 	bool mutex::try_lock()
 	{
-		TACO_PROFILER_LOG("mutex::try_lock");
 		BASIS_ASSERT(IsSchedulerThread());
+		TACO_PROFILER_LOG("mutex::try_lock <%p>", this);
 
 		uint32_t expected = INVALID_SCHEDULER_ID;
 		return m_locked.compare_exchange_strong(expected, GetSchedulerId());
@@ -45,8 +45,8 @@ namespace taco
 
 	bool mutex::try_lock_weak()
 	{
-		TACO_PROFILER_LOG("mutex::try_lock_weak");
 		BASIS_ASSERT(IsSchedulerThread());
+		TACO_PROFILER_LOG("mutex::try_lock_weak <%p>", this);
 
 		uint32_t expected = INVALID_SCHEDULER_ID;
 		return m_locked.compare_exchange_weak(expected, GetSchedulerId());
@@ -54,8 +54,8 @@ namespace taco
 	
 	void mutex::lock()
 	{
-		TACO_PROFILER_LOG("mutex::lock");
 		BASIS_ASSERT(IsSchedulerThread());
+		TACO_PROFILER_LOG("mutex::lock <%p>", this);
 
 		int count = 0;
 		while (!try_lock_weak())
@@ -75,8 +75,8 @@ namespace taco
 
 	void mutex::unlock()
 	{
-		TACO_PROFILER_LOG("mutex::unlock");
 		BASIS_ASSERT(IsSchedulerThread());
+		TACO_PROFILER_LOG("mutex::unlock <%p>", this);
 
 		uint32_t expected = GetSchedulerId();
 		bool r = m_locked.compare_exchange_strong(expected, INVALID_SCHEDULER_ID);

@@ -45,7 +45,8 @@ namespace taco
 
 	void event::wait()
 	{
-		TACO_PROFILER_LOG("event::wait");
+		BASIS_ASSERT(IsSchedulerThread());
+		TACO_PROFILER_LOG("event::wait <%p>", this);
 
 		fiber * cur = FiberCurrent();
 		BASIS_ASSERT(cur);
@@ -70,7 +71,8 @@ namespace taco
 
 	void event::signal()
 	{
-		TACO_PROFILER_LOG("event::signal");
+		BASIS_ASSERT(IsSchedulerThread());
+		TACO_PROFILER_LOG("event::signal <%p>", this);
 		
 		m_mutex.lock();
 		m_ready = true;
