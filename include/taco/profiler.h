@@ -50,7 +50,7 @@ namespace taco
 			uint64_t        task_id;
 			uint64_t        thread_id;
 			event_type      type;
-			basis::string	message;
+			const char *	message;
 		};
 
 		typedef void(listener_fn)(event);
@@ -74,14 +74,3 @@ namespace taco
 	}
 }
 
-#if defined(TACO_PROFILER_ENABLED)
-#define TACO_PROFILER_SCOPE(name) taco::profiler::scope BASIS_CONCAT(tmp_scope, __LINE__)(name)
-#else
-#define TACO_PROFILER_SCOPE(name)
-#endif
-
-#if defined(TACO_PROFILE_ENABLED)
-#define TACO_PROFILER_LOG(fmt, ...) taco::profiler::DebugLog(fmt, __VA_ARGS__)
-#else
-#define TACO_PROFILER_LOG(fmt, ...)
-#endif
