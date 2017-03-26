@@ -448,10 +448,14 @@ namespace taco
 	{
 		BASIS_ASSERT(Scheduler != nullptr);
 		
+		uint64_t taskid = GenTaskId();
+
+		TACO_PROFILER_EMIT(profiler::event_type::schedule, taskid, name);
+
 		if (threadid >=0 && threadid < ThreadCount)
 		{
 			scheduler_data * s = SchedulerList + threadid;
-			s->privateTasks.push_back<task_entry>({ fn, basis::stralloc(name), GenTaskId() });
+			s->privateTasks.push_back<task_entry>({ fn, basis::stralloc(name), taskid });
 			s->privateTaskCount.fetch_add(1, std::memory_order_relaxed);
 
 			if (s != Scheduler)
@@ -463,7 +467,7 @@ namespace taco
 		{
 			BASIS_ASSERT(threadid == TACO_INVALID_THREAD_ID);
 			
-			Scheduler->sharedTasks.push_back<task_entry>({ fn, basis::stralloc(name), GenTaskId() });
+			Scheduler->sharedTasks.push_back<task_entry>({ fn, basis::stralloc(name), taskid });
 			uint32_t count = GlobalSharedTaskCount.fetch_add(1, std::memory_order_relaxed) + 1;
 			if (count > 1 || !Scheduler->isActive)
 			{

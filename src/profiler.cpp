@@ -36,9 +36,13 @@ namespace taco
 
 		static listener_fn * ProfilerEventListener = &DefaultProfilerListener;
 
-		void Emit(event_type type, basis::string message)
+		void Emit(event_type type, uint64_t taskid, const char * message)
 		{
-			ProfilerEventListener({  basis::GetTimestamp(), GetTaskId(), GetSchedulerId(), type, message });
+			ProfilerEventListener({ basis::GetTimestamp(),
+									taskid,
+									GetSchedulerId(),
+									type,
+									message });
 		}
 
 		listener_fn * InstallListener(listener_fn * fn)
