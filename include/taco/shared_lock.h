@@ -66,10 +66,11 @@ namespace taco
 			{
 				BASIS_ASSERT(m_mutex != nullptr);
 				m_mutex->unlock_shared();
+				m_locked = false;
 			}
 		}
 
-		void try_lock()
+		bool try_lock()
 		{
 			BASIS_ASSERT(m_mutex != nullptr);
 			BASIS_ASSERT(!m_locked);
@@ -94,8 +95,9 @@ namespace taco
 		}
 
 	private:
-		shared_lock(const shared_lock &);
-		shared_lock & operator = (const shared_lock &);
+		shared_lock() = delete;
+		shared_lock(const shared_lock &) = delete;
+		shared_lock & operator = (const shared_lock &) = delete;
 
 		MTYPE *	m_mutex;
 		bool	m_locked;
