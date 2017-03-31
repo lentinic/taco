@@ -452,7 +452,7 @@ namespace taco
 
 		TACO_PROFILER_EMIT(profiler::event_type::schedule, taskid, name);
 
-		if (threadid >=0 && threadid < ThreadCount)
+		if (threadid < ThreadCount)
 		{
 			scheduler_data * s = SchedulerList + threadid;
 			s->privateTasks.push_back<task_entry>({ fn, basis::stralloc(name), taskid });
