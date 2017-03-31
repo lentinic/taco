@@ -56,7 +56,7 @@ namespace taco
 		{
 			va_list args;
 			va_start(args, fmt);
-			basis::string msg = basis::strvprintf(fmt, vargs);
+			basis::string msg = basis::strvprintf(fmt, args);
 			va_end(args);
 
 			Emit(event_type::log, msg);
