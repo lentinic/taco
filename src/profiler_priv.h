@@ -57,7 +57,7 @@ namespace taco
 
 #else
 
-#define TACO_PROFILER_EMIT_NAME_TASKID(typem taskid, message)
+#define TACO_PROFILER_EMIT_NAME_TASKID(type, taskid, message)
 #define TACO_PROFILER_EMIT_NAME(type, message)
 #define TACO_PROFILER_EMIT_NONAME(type)
 
