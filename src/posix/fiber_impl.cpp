@@ -76,7 +76,7 @@ namespace taco
 		}
 		else
 		{
-			BASIS_ASSERT_FAILED();
+			BASIS_ASSERT_FAILED;
 		}
 
 		FiberHandoff(CurrentFiber, self);
@@ -90,7 +90,6 @@ namespace taco
 
 		ThreadFiber = new fiber;
 		ThreadFiber->base.threadId = -1;
-		ThreadFiber->base.command = scheduler_command::none;
 		ThreadFiber->base.data = nullptr;
 
 		getcontext(&ThreadFiber->ctx);
@@ -110,7 +109,6 @@ namespace taco
 		fiber * f = new fiber;
 		f->base.fn = fn;
 		f->base.threadId = -1;
-		f->base.command = scheduler_command::none;
 		f->base.data = nullptr;
 
 		getcontext(&f->ctx);
@@ -143,7 +141,7 @@ namespace taco
 		}
 		else
 		{
-			BASIS_ASSERT_FAILED();
+			BASIS_ASSERT_FAILED;
 		}
 
 		FiberHandoff(CurrentFiber, self);
