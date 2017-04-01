@@ -19,8 +19,6 @@ BASIS_TEST_LIST_BEGIN()
 	BASIS_DECLARE_TEST(test_dependent)
 BASIS_TEST_LIST_END()
 
-std::atomic<uint32_t> timewaiting[2];
-
 void dependent(bool blocking, unsigned ntasks, unsigned sleeptime, unsigned cputime)
 {
 	taco::future<uint32_t> * tasks = new taco::future<uint32_t>[ntasks];
@@ -28,10 +26,7 @@ void dependent(bool blocking, unsigned ntasks, unsigned sleeptime, unsigned cput
 	{
 		tasks[i] = taco::Start([=]() -> uint32_t {
 			if (blocking) { taco::BeginBlocking(); }
-
-			auto t0 = basis::GetTimestamp();
 			std::this_thread::sleep_for(std::chrono::microseconds(sleeptime));
-			timewaiting[blocking ? 0 : 1] += (uint32_t)(basis::GetTimestamp() - t0);
 			if (blocking) { taco::EndBlocking(); }
 
 			unsigned steps = 0;
@@ -57,17 +52,19 @@ void dependent(bool blocking, unsigned ntasks, unsigned sleeptime, unsigned cput
 	delete [] tasks;
 }
 
+#include <unistd.h>
+#include <chrono>
+
+typedef std::chrono::high_resolution_clock clock_type;
+
 void independent(bool blocking, unsigned ntasks, unsigned sleeptime, unsigned cputime)
 {
 	taco::future<void> * blockers = new taco::future<void>[ntasks];
 	for (unsigned i=0; i<ntasks; i++)
 	{
-		blockers[i] = taco::Start([=]() -> void {
+		blockers[i] = taco::Start([&]() -> void {
 			if (blocking) { taco::BeginBlocking(); }
-
-			auto t0 = basis::GetTimestamp();
 			std::this_thread::sleep_for(std::chrono::microseconds(sleeptime));
-			timewaiting[blocking ? 0 : 1] += (uint32_t)(basis::GetTimestamp() - t0);
 			if (blocking) { taco::EndBlocking(); }
 		});
 	}
@@ -99,7 +96,7 @@ void independent(bool blocking, unsigned ntasks, unsigned sleeptime, unsigned cp
 			printf("Hash mismatch between %u and %u!", i, i - 1);
 		}
 	}
-
+	
 	delete [] blockers;
 	delete [] calcers;
 }
@@ -107,7 +104,6 @@ void independent(bool blocking, unsigned ntasks, unsigned sleeptime, unsigned cp
 void test_dependent()
 {
 	taco::Initialize([&]() -> void {
-		timewaiting[0] = timewaiting[1] = 0;
 		printf("Task Count\tcpu\tsleep\tenabled\tdisabled\trelative\n");
 		for (unsigned tasks=TASK_MIN; tasks<=TASK_MAX; tasks*=2)
 		{
@@ -123,7 +119,7 @@ void test_dependent()
 					dependent(false, tasks, sleep, cpu);
 					auto disabled = basis::GetTimeDeltaMS(start, basis::GetTimestamp());
 
-					printf("%u\t%u\t%u\t%u\t%u\t%.2f\n", tasks, cpu, sleep, enabled, disabled, disabled / (float) enabled);
+					printf("%u\t%u\t%u\t%lu\t%lu\t%.2f\n", tasks, cpu, sleep, enabled, disabled, disabled / (float) enabled);
 				}
 			}
 		}
@@ -135,7 +131,6 @@ void test_dependent()
 void test_independent()
 {
 	taco::Initialize([&]() -> void {
-		timewaiting[0] = timewaiting[1] = 0;
 		printf("Task Count\tcpu\tsleep\tenabled\tdisabled\trelative\n");
 		for (unsigned tasks=TASK_MIN; tasks<=TASK_MAX; tasks*=2)
 		{
@@ -151,8 +146,7 @@ void test_independent()
 					independent(false, tasks, sleep, cpu);
 					auto disabled = basis::GetTimeDeltaMS(start, basis::GetTimestamp());
 
-					printf("%u\t%u\t%u\t%u\t%u\t%.2f\n", tasks, cpu, sleep, enabled, disabled, disabled / (float) enabled);
-					timewaiting[0] = timewaiting[1] = 0;
+					printf("%u\t%u\t%u\t%lu\t%lu\t%.2f\n", tasks, cpu, sleep, enabled, disabled, disabled / (float) enabled);
 				}
 			}
 		}
