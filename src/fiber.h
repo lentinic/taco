@@ -26,27 +26,27 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 namespace taco
 {
-	struct fiber;
+    struct fiber;
 
-	typedef std::function<void()> fiber_fn;
+    typedef std::function<void()> fiber_fn;
 
-	struct fiber_base
-	{
-		fiber_fn    		fn;
-		fiber_fn    		onEnter;
-		fiber_fn    		onExit;
-		int         		threadId;
-		void *      		data;
-		const char *		name;
-		bool        		isBlocking;
-	};
+    struct fiber_base
+    {
+        fiber_fn            fn;
+        fiber_fn            onEnter;
+        fiber_fn            onExit;
+        int                 threadId;
+        void *              data;
+        const char *        name;
+        bool                isBlocking;
+    };
 
-	void    FiberInitializeThread();
-	void    FiberShutdownThread();
-	fiber * FiberCreate(const fiber_fn & fn);
-	void    FiberDestroy(fiber * f);
-	void    FiberInvoke(fiber * f);
-	fiber * FiberCurrent();
-	fiber * FiberPrevious();
-	fiber * FiberRoot();
+    void    FiberInitializeThread();
+    void    FiberShutdownThread();
+    fiber * FiberCreate(const fiber_fn & fn);
+    void    FiberDestroy(fiber * f);
+    void    FiberInvoke(fiber * f);
+    fiber * FiberCurrent();
+    fiber * FiberPrevious();
+    fiber * FiberRoot();
 }

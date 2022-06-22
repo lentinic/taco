@@ -13,49 +13,49 @@ This source code is licensed under the MIT license (found in the LICENSE file in
 
 namespace taco
 {
-	namespace profiler
-	{
-		enum class event_type
-		{
-			schedule,
-			start,
-			suspend,
-			resume,
-			complete,
-			sleep,
-			awake,
-			log,
-			enter_scope,
-			exit_scope
-		};
+    namespace profiler
+    {
+        enum class event_type
+        {
+            schedule,
+            start,
+            suspend,
+            resume,
+            complete,
+            sleep,
+            awake,
+            log,
+            enter_scope,
+            exit_scope
+        };
 
-		struct event
-		{
-			basis::tick_t   timestamp;
-			uint64_t        task_id;
-			uint64_t        thread_id;
-			event_type      type;
-			const char *	message;
-		};
+        struct event
+        {
+            basis::tick_t   timestamp;
+            uint64_t        task_id;
+            uint64_t        thread_id;
+            event_type      type;
+            const char *    message;
+        };
 
-		typedef void(listener_fn)(event);
+        typedef void(listener_fn)(event);
 
-		listener_fn * InstallListener(listener_fn * fn);
+        listener_fn * InstallListener(listener_fn * fn);
 
-		void Log(const char * fmt, ...);
+        void Log(const char * fmt, ...);
 
-		class scope
-		{
-		public:
-			scope(const char * name);
-			~scope();
+        class scope
+        {
+        public:
+            scope(const char * name);
+            ~scope();
 
-		private:
-			scope(const scope &) = delete;
-			scope & operator = (const scope &) = delete;
+        private:
+            scope(const scope &) = delete;
+            scope & operator = (const scope &) = delete;
 
-			const char * m_name;
-		};
-	}
+            const char * m_name;
+        };
+    }
 }
 

@@ -11,20 +11,20 @@ This source code is licensed under the MIT license (found in the LICENSE file in
 
 namespace taco
 {
-	class mutex
-	{
-	public:
-		mutex();
+    class mutex
+    {
+    public:
+        mutex();
 
-		bool try_lock();
-		bool try_lock_weak();
-		void lock();
-		void unlock();
+        bool try_lock();
+        bool try_lock_weak();
+        void lock();
+        void unlock();
 
-	private:
-		mutex(const mutex &);
-		mutex & operator = (const mutex & );
+    private:
+        mutex(const mutex &);
+        mutex & operator = (const mutex & );
 
-		std::atomic<uint32_t> m_locked;
-	};
+        std::atomic<uint32_t> m_locked;
+    };
 }

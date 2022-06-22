@@ -17,12 +17,12 @@ This source code is licensed under the MIT license (found in the LICENSE file in
 #define INVALID_SCHEDULER_ID 0xffffffff
 
 namespace taco
-{	
-	struct fiber;
-	
-	void Suspend();
-	void Suspend(std::function<void()> on_suspend);
-	
-	void Resume(fiber * f);
-	bool IsSchedulerThread();
+{    
+    struct fiber;
+    
+    void Suspend();
+    void Suspend(std::function<void()> on_suspend);
+    
+    void Resume(fiber * f);
+    bool IsSchedulerThread();
 }

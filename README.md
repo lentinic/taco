@@ -17,10 +17,10 @@ The simplest example of using taco would be to simply initialize the library and
 ```cpp
 //...
 taco::Initialize([]() -> void {
-	auto task = taco::Start([]() -> void {
-		printf("Hello world\n");
-	});
-	task.await();
+    auto task = taco::Start([]() -> void {
+        printf("Hello world\n");
+    });
+    task.await();
 });
 taco::Shutdown();
 //...
@@ -34,11 +34,11 @@ Alternatively, that code could have been written instead like this:
 //...
 taco::Initialize();
 taco::Schedule([] -> void {
-	auto task = taco::Start()[] -> void {
-		printf("Hello world\n");
-	});
-	task.await();
-	taco::ExitMain();
+    auto task = taco::Start()[] -> void {
+        printf("Hello world\n");
+    });
+    task.await();
+    taco::ExitMain();
 }, 0);
 taco::EnterMain();
 taco::Shutdown();
@@ -57,12 +57,12 @@ int counter = 0;
 taco::event completion;
 taco::mutex sync;
 auto fn = [&]() -> {
-	while (counter < 1000)
-	{
-		std::unique_lock<taco::mutex> lock(sync);
-		counter++;
-	}
-	completion.signal();
+    while (counter < 1000)
+    {
+        std::unique_lock<taco::mutex> lock(sync);
+        counter++;
+    }
+    completion.signal();
 }
 taco::Schedule(fn);
 taco::Schedule(fn);
@@ -76,12 +76,12 @@ Getting a little more interesting we can look at using the future class to calcu
 //...
 unsigned fibonacci(unsigned n)
 {
-	if (n < 2) return 1;
+    if (n < 2) return 1;
 
-	auto a = taco::Start(fibonacci, n - 1); // a is of type future<unsigned>
-	auto b = taco::start(fibonacci, n - 2);
+    auto a = taco::Start(fibonacci, n - 1); // a is of type future<unsigned>
+    auto b = taco::start(fibonacci, n - 2);
 
-	return a + b;
+    return a + b;
 }
 auto r = taco::Start(fibonacci, 11);
 printf("fibonacci(11) = %u\n", (unsigned) r);
@@ -92,19 +92,19 @@ Or printing out the fibonacci sequence using generators:
 
 ```cpp
 auto fibonacci = taco::StartGenerator([]() -> unsigned) {
-	unsigned a = 0;
-	unsigned b = 1;
-	for (;;)
-	{
-		taco::YieldValue(b);
-		unsigned tmp = a + b;
-		a = b;
-		b = tmp;
-	}
+    unsigned a = 0;
+    unsigned b = 1;
+    for (;;)
+    {
+        taco::YieldValue(b);
+        unsigned tmp = a + b;
+        a = b;
+        b = tmp;
+    }
 });
 for (unsigned i=0; i<12; i++)
 {
-	printf("%u ", (unsigned) fibonacci);
+    printf("%u ", (unsigned) fibonacci);
 }
 //...
 ```
