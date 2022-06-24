@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2014 Chris Lentini
+Chris Lentini
 http://divergentcoder.io
 
 This source code is licensed under the MIT license (found in the LICENSE file in the root directory of the project)

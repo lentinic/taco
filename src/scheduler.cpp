@@ -4,6 +4,7 @@ http://divergentcoder.io
 
 This source code is licensed under the MIT license (found in the LICENSE file in the root directory of the project)
 */
+
 #include <utility>
 
 #include <basis/assert.h>
