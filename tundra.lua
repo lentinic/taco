@@ -2,7 +2,7 @@ Build {
     Env = {
         CPPPATH = {
             "./include",
-            "../basis/include"
+            "./external/basis/include"
         },
     },
     Units = function()
