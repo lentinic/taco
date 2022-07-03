@@ -98,7 +98,7 @@ namespace taco
     };
     
     template<class F>
-    auto Start(const char * name, F fn, uint32_t threadid = TACO_INVALID_THREAD_ID) -> future<decltype(fn())>
+    auto Start(const char * name, F fn, uint32_t threadid = constants::invalid_thread_id) -> future<decltype(fn())>
     {
         typedef decltype(fn()) rtype;
         future<rtype> r = { std::make_shared<internal::future_data<rtype>>() };
@@ -111,7 +111,7 @@ namespace taco
     }
 
     template<class F>
-    auto Start(F fn, uint32_t threadid = TACO_INVALID_THREAD_ID) -> future<decltype(fn())>
+    auto Start(F fn, uint32_t threadid = constants::invalid_thread_id) -> future<decltype(fn())>
     {
         return Start(nullptr, fn, threadid);
     }

@@ -451,7 +451,7 @@ namespace taco
         }
         else
         {
-            BASIS_ASSERT(threadid == TACO_INVALID_THREAD_ID);
+            BASIS_ASSERT(threadid == constants::invalid_thread_id);
             
             Scheduler->sharedTasks.push_back<task_entry>({ fn, basis::stralloc(name), taskid });
             uint32_t count = GlobalSharedTaskCount.fetch_add(1, std::memory_order_relaxed) + 1;
