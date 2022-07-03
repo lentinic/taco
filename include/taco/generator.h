@@ -78,7 +78,7 @@ namespace taco
     }
 
     template<class F>
-    auto StartGenerator(const char * name, F fn, uint32_t threadid = TACO_INVALID_THREAD_ID) -> generator<decltype(fn())>
+    auto StartGenerator(const char * name, F fn, uint32_t threadid = constants::invalid_thread_id) -> generator<decltype(fn())>
     {
         typedef decltype(fn()) return_type;
 
@@ -96,7 +96,7 @@ namespace taco
     }
 
     template<class F>
-    auto StartGenerator(F fn, uint32_t threadid = TACO_INVALID_THREAD_ID) -> generator<decltype(fn())>
+    auto StartGenerator(F fn, uint32_t threadid = constants::invalid_thread_id) -> generator<decltype(fn())>
     {
         return StartGenerator(nullptr, fn, threadid);
     }
