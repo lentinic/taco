@@ -13,3 +13,4 @@
 
 t2-output/*
 *.tundra2.*
+.vscode/*
