@@ -1,3 +1,3 @@
 [submodule "external/basis"]
-	path = external/basis
-	url = https://github.com/lentinic/basis.git
+    path = external/basis
+    url = https://github.com/lentinic/basis.git
