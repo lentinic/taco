@@ -17,6 +17,13 @@ This source code is licensed under the MIT license (found in the LICENSE file in
 #include "../fiber.h"
 #include "../config.h"
 
+#if defined(__clang__)
+// yes, yes, ucontext is deprecated on at least MacOS as of 10.6
+// probably elsewhere too
+// it still works for now though
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
+
 // using technique detailed at http://www.1024cores.net/home/lock-free-algorithms/tricks/fibers
 
 namespace taco
@@ -26,6 +33,7 @@ namespace taco
         fiber_base                base;
         ucontext_t                ctx;
         jmp_buf                   jmp;
+        char *                    stack;
     };
 
     basis_thread_local static fiber * CurrentFiber = nullptr; 
@@ -51,22 +59,27 @@ namespace taco
         CurrentFiber = cur;
     }
 
-    static void FiberMain(void * arg)
+    static void FiberMain(uint32_t ptr_hi, uint32_t ptr_low)
     {
-        fiber * self = (fiber *) arg;
+        // makecontext expects integer parameters
+        // Are those 32-bit or 64-bit integers? Depends...
+        // e.g. making this take a void * works find on x86_64 Linux
+        // but on an arm64 mac the pointer is truncated (i.e. we get the lower 32-bits)
+        // so we break the pointer up explicitly into two 32-bit integers
+        // and then reconstruct the 64-bit pointer value
+        // kind of ugly, but should work fairly broadly... I hope
+        
+        static_assert(sizeof(fiber*) <= sizeof(uint64_t));
+
+        fiber * self = (fiber *)(((uint64_t)ptr_hi << 32) | (uint64_t)ptr_low);
         BASIS_ASSERT(self != nullptr);
 
         if (_setjmp(self->jmp) == 0)
         {
             swapcontext(&self->ctx, &CurrentFiber->ctx);
         }
-        else
-        {
-            BASIS_ASSERT_FAILED;
-        }
 
         FiberHandoff(CurrentFiber, self);
-
         self->base.fn();
     }
 
@@ -89,29 +102,34 @@ namespace taco
         delete ThreadFiber;
         ThreadFiber = nullptr;
     }
-    
+
     fiber * FiberCreate(const fiber_fn & fn)
     {
         fiber * f = new fiber;
         f->base.fn = fn;
         f->base.threadId = -1;
         f->base.data = nullptr;
+        f->base.isBlocking = false;
+        f->base.onEnter = f->base.onExit = nullptr;
+
+        f->stack = new char[FIBER_STACK_SIZE];
 
         getcontext(&f->ctx);
-        f->ctx.uc_stack.ss_sp = new char[FIBER_STACK_SIZE];
+        f->ctx.uc_stack.ss_sp = f->stack;
         f->ctx.uc_stack.ss_size = FIBER_STACK_SIZE;
         f->ctx.uc_link = 0;
-        makecontext(&f->ctx, (void(*)())&FiberMain, 1, f);
-        
-        swapcontext(&CurrentFiber->ctx, &f->ctx);
 
+        uintptr_t offs_f = (uintptr_t) f;
+        makecontext(&f->ctx, (void(*)())&FiberMain, 2, ((offs_f >> 32) & 0xffffffff), (offs_f & 0xffffffff));
+
+        swapcontext(&CurrentFiber->ctx, &f->ctx);
         return f;
     }
 
     void FiberDestroy(fiber * f)
     {
         BASIS_ASSERT(CurrentFiber != f);
-        delete [] (char *)f->ctx.uc_stack.ss_sp;
+        delete [] f->stack;
         delete f;
     }
 
@@ -120,14 +138,9 @@ namespace taco
         BASIS_ASSERT(f != nullptr);
         BASIS_ASSERT(f != CurrentFiber);
         fiber * self = CurrentFiber;
-        
         if (_setjmp(self->jmp) == 0)
         {
             _longjmp(f->jmp, 1);
-        }
-        else
-        {
-            BASIS_ASSERT_FAILED;
         }
 
         FiberHandoff(CurrentFiber, self);
