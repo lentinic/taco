@@ -8,7 +8,7 @@ This source code is licensed under the MIT license (found in the LICENSE file in
 #include <mutex>
 #include <basis/assert.h>
 #include <taco/condition.h>
-#include <taco/scheduler.h>
+#include <taco/taco_core.h>
 #include "fiber.h"
 #include "scheduler_priv.h"
 #include "profiler_priv.h"
