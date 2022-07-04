@@ -8,7 +8,7 @@ This source code is licensed under the MIT license (found in the LICENSE file in
 #include <mutex>
 #include <basis/shared_mutex.h>
 #include <taco/profiler.h>
-#include <taco/scheduler.h>
+#include <taco/taco_core.h>
 #include "profiler_priv.h"
 
 namespace taco
@@ -42,7 +42,7 @@ namespace taco
         {
             va_list args;
             va_start(args, fmt);
-            basis::string msg = basis::strvprintf(fmt, args);
+            basis::string msg = basis::stralloc("dumb");//basis::strvprintf(fmt, args);
             va_end(args);
 
             Emit(event_type::log, msg);

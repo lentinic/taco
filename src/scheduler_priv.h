@@ -12,7 +12,7 @@ This source code is licensed under the MIT license (found in the LICENSE file in
 #include <vector>
 #include <condition_variable>
 
-#include <taco/scheduler.h>
+#include <taco/taco_core.h>
 
 #define INVALID_SCHEDULER_ID 0xffffffff
 

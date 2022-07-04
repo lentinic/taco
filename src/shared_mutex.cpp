@@ -7,7 +7,7 @@ This source code is licensed under the MIT license (found in the LICENSE file in
 
 #include <basis/assert.h>
 #include <basis/thread_util.h>
-#include <taco/scheduler.h>
+#include <taco/taco_core.h>
 #include <taco/shared_mutex.h>
 #include "scheduler_priv.h"
 #include "profiler_priv.h"
