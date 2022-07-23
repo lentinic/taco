@@ -42,7 +42,7 @@ namespace taco
         {
             va_list args;
             va_start(args, fmt);
-            basis::string msg = basis::stralloc("dumb");//basis::strvprintf(fmt, args);
+            basis::string msg = basis::strvfmt(fmt, args);
             va_end(args);
 
             Emit(event_type::log, msg);
