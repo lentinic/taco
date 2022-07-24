@@ -46,28 +46,28 @@ namespace taco
     struct scheduler_data
     {
         scheduler_data()
-            :    sharedTasks(PUBLIC_TASKQ_CHUNK_SIZE),
-                privateTasks(PRIVATE_TASKQ_CHUNK_SIZE),
-                sharedFibers(PUBLIC_FIBERQ_CHUNK_SIZE),
-                privateFibers(PRIVATE_FIBERQ_CHUNK_SIZE)
+        :   sharedTasks(PUBLIC_TASKQ_CHUNK_SIZE),
+            privateTasks(PRIVATE_TASKQ_CHUNK_SIZE),
+            sharedFibers(PUBLIC_FIBERQ_CHUNK_SIZE),
+            privateFibers(PRIVATE_FIBERQ_CHUNK_SIZE)
         {}
 
-        shared_task_queue_t            sharedTasks;
+        shared_task_queue_t         sharedTasks;
         private_task_queue_t        privateTasks;
         shared_fiber_queue_t        sharedFibers;
-        private_fiber_queue_t        privateFibers;
+        private_fiber_queue_t       privateFibers;
 
         std::thread                 thread;
 
         std::atomic_bool            exitRequested;
-        std::condition_variable_any    wakeCondition;
-        basis::shared_mutex            wakeMutex;
+        std::condition_variable_any wakeCondition;
+        basis::shared_mutex         wakeMutex;
         std::vector<fiber*>         inactive;
-        std::atomic<uint32_t>        privateTaskCount;
+        std::atomic<uint32_t>       privateTaskCount;
 
         uint32_t                    threadId;
-        bool                         isActive;
-        bool                         isSignaled;
+        bool                        isActive;
+        bool                        isSignaled;
     };
 
     basis_thread_local static scheduler_data * Scheduler = nullptr;
@@ -304,7 +304,7 @@ namespace taco
     static void ShutdownScheduler()
     {
         fiber * f = nullptr;
-
+        BASIS_ASSERT(FiberCurrent() == FiberRoot());
         while (Scheduler->privateFibers.pop_front(f))
         {
             FiberDestroy(f);
@@ -347,7 +347,7 @@ namespace taco
 
                 FiberInitializeThread();
                 fiber * f = FiberCreate(&WorkerLoop);
-
+                
                 Scheduler->isActive = true;
                 FiberInvoke(f);
                 Scheduler->isActive = false;
@@ -399,7 +399,7 @@ namespace taco
             thread->thread.join();
             delete thread;
         }
-
+        
         ShutdownScheduler();
 
         delete [] SchedulerList;
