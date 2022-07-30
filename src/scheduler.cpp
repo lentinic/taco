@@ -80,10 +80,10 @@ namespace taco
     struct blocking_thread
     {
         std::thread                 thread;
-        std::mutex                     workMutex;
-        std::condition_variable        workCondition;
-        bool                         exitRequested;
-        fiber *                        current;
+        std::mutex                  workMutex;
+        std::condition_variable     workCondition;
+        bool                        exitRequested;
+        fiber *                     current;
     };
 
     basis::ring_queue<blocking_thread*,basis::queue_access_policy::mpmc> BlockingThreads(BLOCKING_THREAD_LIMIT);
