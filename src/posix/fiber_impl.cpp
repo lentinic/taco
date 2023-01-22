@@ -13,6 +13,7 @@ This source code is licensed under the MIT license (found in the LICENSE file in
 
 #include "../fiber.h"
 #include "../config.h"
+#include "../thread_state.h"
 
 #if defined(__clang__)
 // yes, yes, ucontext is deprecated on at least MacOS as of 10.6
@@ -34,39 +35,16 @@ namespace taco
         char *                    stack;
     };
 
-    // thread local state to let us track fiber transitions
-    // not publicly constructible/copyable/moveable
-    // an instance can only be accessed via the static
-    // "get" method
-    // this method is non-inlineable to prevent compiler
-    // optimizations from caching the result across
-    // fiber transitions (where a fiber can suspend and
-    // then potentially resumes on a different thread)
-    namespace {
-        class thread_state
-        {
-        public:
-            fiber * current {};
-            fiber * previous {};
-            fiber * root {};
-
-            __attribute__((noinline))
-            static thread_state & get()
-            {
-                basis_thread_local static thread_state state;
-                return state;
-            }
-
-        private:
-            thread_state() {}
-            thread_state(const thread_state &) = delete;
-            thread_state & operator = (const thread_state &) = delete;
-        };
-    }
+    struct fiber_state
+    {
+        fiber * current {};
+        fiber * previous {};
+        fiber * root {};
+    };
 
     static void FiberHandoff(fiber * prev, fiber * cur)
     {
-        thread_state & state = thread_state::get();
+        fiber_state & state = thread_state<fiber_state>();
 
         BASIS_ASSERT(prev->active);
         BASIS_ASSERT(!cur->active);
@@ -113,21 +91,20 @@ namespace taco
         if (_setjmp(self->jmp) == 0)
         {
             // swap back to the fiber we were in when this one was created
-            fiber * origin = thread_state::get().current;
+            fiber * origin = thread_state<fiber_state>().current;
             swapcontext(&self->ctx, &origin->ctx);
         }
         
         // First time this fiber has been invoked, complete the handoff
         // transition from whatever fiber jumped to us before invoking
         // the users function
-        FiberHandoff(thread_state::get().current, self);
+        FiberHandoff(thread_state<fiber_state>().current, self);
         self->base.fn();
     }
 
     void FiberInitializeThread()
     {
-        thread_state & state = thread_state::get();
-
+        fiber_state & state = thread_state<fiber_state>();
         BASIS_ASSERT(state.root == nullptr);
 
         fiber * root = new fiber;
@@ -140,7 +117,7 @@ namespace taco
 
     void FiberShutdownThread()
     {  
-        thread_state & state = thread_state::get();
+        fiber_state & state = thread_state<fiber_state>();
 
         BASIS_ASSERT(state.current == state.root);
 
@@ -167,15 +144,16 @@ namespace taco
         f->ctx.uc_stack.ss_size = FIBER_STACK_SIZE;
         f->ctx.uc_link = 0;
 
+        fiber_state & state = thread_state<fiber_state>();
         makecontext(&f->ctx, (void(*)())&FiberMain, 2, ((addr >> 32) & 0xffffffff), (addr & 0xffffffff));
-        swapcontext(&thread_state::get().current->ctx, &f->ctx);
+        swapcontext(&state.current->ctx, &f->ctx);
 
         return f;
     }
 
     void FiberDestroy(fiber * f)
     {
-        BASIS_ASSERT(thread_state::get().current != f);
+        BASIS_ASSERT(thread_state<fiber_state>().current != f);
 
         delete [] f->stack;
         delete f;
@@ -183,8 +161,8 @@ namespace taco
 
     void FiberInvoke(fiber * f)
     {
-        fiber * self = thread_state::get().current;
-
+        fiber * self = thread_state<fiber_state>().current;
+        
         BASIS_ASSERT(f != self);
 
         if (_setjmp(self->jmp) == 0)
@@ -192,21 +170,24 @@ namespace taco
             _longjmp(f->jmp, 1);
         }
 
-        FiberHandoff(thread_state::get().current, self);
+        // Note we call thread_state again instead of reusing the
+        // earlier reference because we could now be on a different
+        // thread!
+        FiberHandoff(thread_state<fiber_state>().current, self);
     }
 
     fiber * FiberCurrent()
     {
-        return thread_state::get().current;
+        return thread_state<fiber_state>().current;
     }
 
     fiber * FiberPrevious()
     {
-        return thread_state::get().previous;
+        return thread_state<fiber_state>().previous;
     }
 
     fiber * FiberRoot()
     {
-        return thread_state::get().root;
+        return thread_state<fiber_state>().root;
     }
 }
