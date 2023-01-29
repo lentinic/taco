@@ -17,11 +17,10 @@ This source code is licensed under the MIT license (found in the LICENSE file in
 #include "config.h"
 #include "fiber.h"
 #include "profiler_priv.h"
+#include "thread_state.h"
 
 namespace taco
 {
-    basis_thread_local static uint64_t CurrentTaskId;
-    
     struct task_entry
     {
         task_fn         fn;
@@ -30,7 +29,7 @@ namespace taco
 
         void operator () ()
         {
-            CurrentTaskId = id;
+            thread_state<task_entry *>() = this;
             TACO_PROFILER_EMIT(profiler::event_type::start, name);
             fn();
             TACO_PROFILER_EMIT(profiler::event_type::complete);
@@ -228,11 +227,11 @@ namespace taco
     static void FiberSwitch(fiber * to)
     {
         BASIS_ASSERT(!((fiber_base *)to)->isBlocking);
-        TACO_PROFILER_EMIT(profiler::evemt_type::suspend);
+        TACO_PROFILER_EMIT(profiler::event_type::suspend);
         
-        uint64_t task_id = CurrentTaskId;
+        task_entry * task = thread_state<task_entry*>();
         FiberInvoke(to);
-        CurrentTaskId = task_id;
+        thread_state<task_entry*>() = task;
 
         CheckForExitCondition();
 
@@ -625,7 +624,7 @@ namespace taco
 
     uint64_t GetTaskId()
     {
-        return CurrentTaskId;
+        return thread_state<task_entry*>()->id;
     }
 
     uint32_t GetThreadCount()
