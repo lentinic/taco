@@ -85,32 +85,28 @@ void test_switch()
 {
     taco::Initialize(); 
 
-    std::mutex mutex;
     const uint32_t numJobs = taco::GetThreadCount() + 2;
     basis::bitvector did_run(numJobs);
-
-    // If the switching doesn't work then this task will hog the thread it gets grabbed by
-    // So if we schedule more of these tasks than there are threads we'll never see all of them entered
-    auto fn = [&](unsigned index) -> void {
-        
-        {
-            std::unique_lock<std::mutex> lock(mutex);
-            did_run.set_bit(index, true);
-        }
-
-        for (;;)
-        {
-            taco::Switch();
-        }
-
-    };
+    std::mutex mutex;
 
     auto start = basis::GetTimestamp();
     bool timeout = false;
 
     for (unsigned i=0; i<numJobs; i++)
     {
-        taco::Schedule(std::bind(fn, i));
+        // If the switching doesn't work then this task will hog the thread it gets grabbed by
+        // So if we schedule more of these tasks than there are threads we'll never see all of them entered
+        taco::Schedule([&,i]() -> void { 
+            {
+                std::unique_lock<std::mutex> lock(mutex);
+                did_run.set_bit(i, true);
+            }
+
+            for (;;)
+            {
+                taco::Switch();
+            }
+        });
     }
 
     while (!did_run.test_all(true))
