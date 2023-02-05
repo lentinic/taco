@@ -19,6 +19,8 @@ This source code is licensed under the MIT license (found in the LICENSE file in
 #include "profiler_priv.h"
 #include "thread_state.h"
 
+#include "work_queue.h"
+
 namespace taco
 {
     struct task_entry
@@ -36,18 +38,16 @@ namespace taco
         }
     };
 
-    typedef basis::chunk_queue<task_entry,basis::queue_access_policy::spmc> shared_task_queue_t;
+    typedef work_queue<task_entry, 256> shared_task_queue_t;
     typedef basis::chunk_queue<task_entry,basis::queue_access_policy::mpsc> private_task_queue_t;
 
-    typedef basis::chunk_queue<fiber *,basis::queue_access_policy::mpmc> shared_fiber_queue_t;
+    typedef work_queue<fiber*, 256> shared_fiber_queue_t;
     typedef basis::chunk_queue<fiber *,basis::queue_access_policy::mpsc> private_fiber_queue_t;
 
     struct scheduler_data
     {
         scheduler_data()
-        :   sharedTasks(PUBLIC_TASKQ_CHUNK_SIZE),
-            privateTasks(PRIVATE_TASKQ_CHUNK_SIZE),
-            sharedFibers(PUBLIC_FIBERQ_CHUNK_SIZE),
+        :   privateTasks(PRIVATE_TASKQ_CHUNK_SIZE),
             privateFibers(PRIVATE_FIBERQ_CHUNK_SIZE)
         {}
 
@@ -114,13 +114,18 @@ namespace taco
         uint32_t id = start;
         do
         {
-            if (SchedulerList[id].sharedTasks.pop_front(out))
+            if ((id == start) && SchedulerList[id].sharedTasks.pop(out))
+            {
+                GlobalSharedTaskCount.fetch_sub(1, std::memory_order_relaxed);
+                return true;
+            } 
+            else if ((id != start) && SchedulerList[id].sharedTasks.steal(out))
             {
                 GlobalSharedTaskCount.fetch_sub(1, std::memory_order_relaxed);
                 return true;
             }
             id = (id + 1) < ThreadCount ? (id + 1) : 0;
-        } while (id != start);
+        } while (id != start && GlobalSharedTaskCount > 0);
         return false;
     }
 
@@ -171,7 +176,11 @@ namespace taco
         uint32_t id = start;
         do
         {
-            if (SchedulerList[id].sharedFibers.pop_front(ret))
+            if ((id == start) && SchedulerList[id].sharedFibers.pop(ret))
+            {
+                return ret;
+            }
+            else if ((id != start) && SchedulerList[id].sharedFibers.steal(ret))
             {
                 return ret;
             }
@@ -309,7 +318,7 @@ namespace taco
             FiberDestroy(f);
         }
 
-        while (Scheduler->sharedFibers.pop_front(f))
+        while (Scheduler->sharedFibers.pop(f))
         {
             FiberDestroy(f);
         }
@@ -452,7 +461,8 @@ namespace taco
         {
             BASIS_ASSERT(threadid == constants::invalid_thread_id);
             
-            Scheduler->sharedTasks.push_back<task_entry>({ fn, basis::stralloc(name), taskid });
+            Scheduler->sharedTasks.push({ fn, basis::stralloc(name), taskid });
+            
             uint32_t count = GlobalSharedTaskCount.fetch_add(1, std::memory_order_relaxed) + 1;
             if (count > 1 || !Scheduler->isActive)
             {
@@ -467,7 +477,7 @@ namespace taco
         f->onExit = [&]() -> void {
             if (f->threadId < 0)
             {
-                Scheduler->sharedFibers.push_back((fiber *)f);
+                Scheduler->sharedFibers.push((fiber *)f);
             }
             else
             {
@@ -552,7 +562,7 @@ namespace taco
             base->isBlocking = false;
             if (base->threadId < 0)
             {
-                SchedulerList[-(base->threadId + 1)].sharedFibers.push_back(f);
+                SchedulerList[-(base->threadId + 1)].sharedFibers.push(f);
                 SignalScheduler(SchedulerList - (base->threadId + 1));
             }
             else
@@ -602,7 +612,7 @@ namespace taco
         fiber_base * base = (fiber_base *) f;
         if (base->threadId < 0)
         {
-            Scheduler->sharedFibers.push_back(f);
+            Scheduler->sharedFibers.push(f);
         }
         else
         {
