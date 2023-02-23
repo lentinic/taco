@@ -105,11 +105,11 @@ void test_dependent()
 {
     taco::Initialize([&]() -> void {
         printf("Task Count\tcpu\tsleep\tenabled\tdisabled\trelative\n");
-        for (unsigned tasks=TASK_MIN; tasks<=TASK_MAX; tasks*=2)
+        for (uint32_t tasks=TASK_MIN; tasks<=TASK_MAX; tasks*=2)
         {
-            for (unsigned cpu=CPU_MIN; cpu<=CPU_MAX; cpu*=2)
+            for (uint32_t cpu=CPU_MIN; cpu<=CPU_MAX; cpu*=2)
             {    
-                for (unsigned sleep=SLEEP_MIN; sleep<=SLEEP_MAX; sleep*=2)
+                for (uint32_t sleep=SLEEP_MIN; sleep<=SLEEP_MAX; sleep*=2)
                 {
                     auto start = basis::GetTimestamp();
                     dependent(true, tasks, sleep, cpu);
@@ -119,7 +119,7 @@ void test_dependent()
                     dependent(false, tasks, sleep, cpu);
                     auto disabled = basis::GetTimeDeltaMS(start, basis::GetTimestamp());
 
-                    printf("%u\t%u\t%u\t%lu\t%lu\t%.2f\n", tasks, cpu, sleep, enabled, disabled, disabled / (float) enabled);
+                    printf("%u\t%u\t%u\t%llu\t%llu\t%.2f\n", tasks, cpu, sleep, enabled, disabled, disabled / (float) enabled);
                 }
             }
         }
@@ -132,11 +132,11 @@ void test_independent()
 {
     taco::Initialize([&]() -> void {
         printf("Task Count\tcpu\tsleep\tenabled\tdisabled\trelative\n");
-        for (unsigned tasks=TASK_MIN; tasks<=TASK_MAX; tasks*=2)
+        for (uint32_t tasks=TASK_MIN; tasks<=TASK_MAX; tasks*=2)
         {
-            for (unsigned cpu=CPU_MIN; cpu<=CPU_MAX; cpu*=2)
+            for (uint32_t cpu=CPU_MIN; cpu<=CPU_MAX; cpu*=2)
             {    
-                for (unsigned sleep=SLEEP_MIN; sleep<=SLEEP_MAX; sleep*=2)
+                for (uint32_t sleep=SLEEP_MIN; sleep<=SLEEP_MAX; sleep*=2)
                 {
                     auto start = basis::GetTimestamp();
                     independent(true, tasks, sleep, cpu);
@@ -146,7 +146,7 @@ void test_independent()
                     independent(false, tasks, sleep, cpu);
                     auto disabled = basis::GetTimeDeltaMS(start, basis::GetTimestamp());
 
-                    printf("%u\t%u\t%u\t%lu\t%lu\t%.2f\n", tasks, cpu, sleep, enabled, disabled, disabled / (float) enabled);
+                    printf("%u\t%u\t%u\t%llu\t%llu\t%.2f\n", tasks, cpu, sleep, enabled, disabled, disabled / (float) enabled);
                 }
             }
         }
